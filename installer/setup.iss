@@ -50,7 +50,7 @@ SetupIconFile={#MyAppIcon}
 
 ; ── Privileges ────────────────────────────────────────────────────────────
 PrivilegesRequired=lowest                     
-PrivilegesRequiredOverridesAllowed=dialog    
+;PrivilegesRequiredOverridesAllowed=dialog    
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
