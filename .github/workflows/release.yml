@@ -1,73 +1,145 @@
 name: Build & Release Installer
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Triggers on any git tag that looks like a version, e.g. v1.0.0 or v2.3.1
-# Push a tag to start a release:
-#   git tag v1.0.0 && git push origin v1.0.0
+# Triggers:
+#   • Push a version tag:  git tag v1.0.0 && git push origin v1.0.0
+#   • Manual run from GitHub Actions tab (workflow_dispatch)
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label (e.g. v1.0.0)"
+        required: true
+        default: "v0.0.0-test"
 
 permissions:
-  contents: write   # needed to create/upload GitHub Release assets
+  contents: write   # needed to create / upload GitHub Release assets
 
 jobs:
   build-and-release:
     name: Build installer on Windows
     runs-on: windows-latest
 
+    env:
+      # Prevent PyQt6 from crashing on the headless runner
+      QT_QPA_PLATFORM: offscreen
+
     steps:
-      # ── 1. Checkout source ────────────────────────────────────────────────
+      # ── 1. Checkout ────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python ──────────────────────────────────────────────────
+      # ── 2. Python setup ────────────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
-      # ── 3. Install Python dependencies ───────────────────────────────────
-      - name: Install Python dependencies
+      # ── 3. Install core dependencies (required for the build) ──────────────
+      - name: Install core dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip wheel setuptools
           pip install pyinstaller
+          pip install PyQt6>=6.7.0
+          pip install httpx[http2]>=0.27.0
+          pip install selectolax>=0.3.17 beautifulsoup4>=4.12.0 lxml>=5.2.0
+          pip install fastapi>=0.111.0 "uvicorn[standard]>=0.30.0"
+          pip install sqlmodel>=0.0.19
+          pip install python-dotenv>=1.0.0 aiofiles>=23.2.1 Pillow>=10.3.0 tenacity>=8.3.0
+          pip install ebooklib>=0.18
+          pip install groq>=0.9.0
+          pip install google-genai>=0.1.0
 
-      # ── 4. Build the executable with PyInstaller ─────────────────────────
+      # ── 4. Install optional / harder-to-build packages ─────────────────────
+      #    curl-cffi ships pre-built wheels for Windows, but if it fails
+      #    the build continues (httpx alone is enough for most scrapers).
+      - name: Install optional packages
+        run: pip install curl-cffi>=0.7.0
+        continue-on-error: true
+
+      # ── 5. Confirm what is installed ───────────────────────────────────────
+      - name: Show installed packages
+        run: pip list
+
+      # ── 6. Build with PyInstaller ──────────────────────────────────────────
       - name: Build executable (PyInstaller)
-        run: pyinstaller novel_bridge.spec --noconfirm
+        run: pyinstaller novel_bridge.spec --noconfirm --log-level INFO
 
-      # ── 5. Install Inno Setup (via Chocolatey) ────────────────────────────
+      # ── 7. Verify the exe was produced ────────────────────────────────────
+      - name: Verify dist output
+        run: |
+          if (!(Test-Path "dist\NovelBridgeAR\NovelBridgeAR.exe")) {
+            Write-Error "NovelBridgeAR.exe was NOT found in dist\NovelBridgeAR\"
+            Get-ChildItem dist -Recurse | Select-Object FullName
+            exit 1
+          }
+          Write-Host "✅ NovelBridgeAR.exe found"
+          Get-Item "dist\NovelBridgeAR\NovelBridgeAR.exe" | Select-Object Name, Length
+        shell: pwsh
+
+      # ── 8. Install Inno Setup ──────────────────────────────────────────────
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
-      # ── 6. Compile the installer with Inno Setup ─────────────────────────
+      # ── 9. Compile installer ───────────────────────────────────────────────
       - name: Compile installer (Inno Setup)
         run: |
+          # Strip leading "v" so Inno Setup gets "1.0.0" not "v1.0.0"
+          $tag = "${{ github.ref_name }}"
+          if (-not $tag -or $tag -eq "refs/heads/main") {
+            $tag = "${{ github.event.inputs.version }}"
+          }
+          $version = $tag.TrimStart("v")
+          Write-Host "Building installer for version: $version (tag: $tag)"
+
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc /DMyAppVersion="${{ github.ref_name }}" installer\setup.iss
+          & $iscc "/DMyAppVersion=$version" "installer\setup.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         shell: pwsh
 
-      # ── 7. Create GitHub Release and upload installer ─────────────────────
-      - name: Create GitHub Release & upload installer
+      # ── 10. Verify installer was produced ──────────────────────────────────
+      - name: Verify installer output
+        run: |
+          if (!(Test-Path "installer\Output\NovelBridgeAR_Setup.exe")) {
+            Write-Error "NovelBridgeAR_Setup.exe was NOT found!"
+            Get-ChildItem "installer\Output" -ErrorAction SilentlyContinue
+            exit 1
+          }
+          $size = (Get-Item "installer\Output\NovelBridgeAR_Setup.exe").Length / 1MB
+          Write-Host ("✅ Installer found — {0:F1} MB" -f $size)
+        shell: pwsh
+
+      # ── 11. Upload installer as workflow artifact (always, for debugging) ───
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NovelBridgeAR-installer
+          path: installer/Output/NovelBridgeAR_Setup.exe
+          retention-days: 7
+
+      # ── 12. Create/update GitHub Release and attach installer ───────────────
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "NovelBridge AR ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name || github.event.inputs.version }}
+          name: "NovelBridge AR ${{ github.ref_name || github.event.inputs.version }}"
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: installer\Output\NovelBridgeAR_Setup.exe
+          prerelease: ${{ contains(github.ref_name, '-') || contains(github.event.inputs.version, '-') }}
+          files: installer/Output/NovelBridgeAR_Setup.exe
           body: |
-            ## NovelBridge AR ${{ github.ref_name }}
+            ## NovelBridge AR ${{ github.ref_name || github.event.inputs.version }}
 
-            ### Installation
+            ### 📥 Installation
             1. Download **NovelBridgeAR_Setup.exe** below
             2. Run the installer and follow the wizard
             3. Launch **NovelBridge AR** from the Start Menu or Desktop shortcut
 
-            ### What's new
+            ### 📋 What's new
             See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes in this release.
+
