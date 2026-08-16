@@ -1,35 +1,2157 @@
 {
-  "_comment": "Add glossary rules here. source_term is matched case-insensitively. target_term is the Arabic replacement.",
+  "_comment": "Enriched Arabic glossary for translating English Web Novels, especially Chinese Xianxia/Xuanhuan, Wuxia and Korean LitRPG, Regression, Dungeon and Modern Fantasy novels.",
+  "translation_principles": {
+    "consistency": "Use the same Arabic term throughout a novel unless the context clearly requires a different meaning.",
+    "style": "Prefer natural literary Arabic over literal machine translation.",
+    "chinese_novels": "Preserve cultivation terminology and avoid replacing established fantasy concepts with unrelated Arabic concepts.",
+    "korean_novels": "Prefer modern and readable Arabic for system, dungeon, hunter and regression terminology.",
+    "proper_nouns": "Names of people, techniques, sects, locations and ranks should generally be transliterated or kept as proper names rather than translated literally."
+  },
   "rules": [
     {
       "id": 1,
       "source_term": "god tier",
-      "target_term": "مستوى مكرم",
-      "notes": "Example from spec"
+      "target_term": "مستوى أسطوري",
+      "notes": "Extreme or legendary power tier."
     },
     {
       "id": 2,
       "source_term": "cultivation",
-      "target_term": "تنمية الطاقة",
-      "notes": "Common xianxia term"
+      "target_term": "صقل الطاقة",
+      "notes": "Spiritual training and power refinement in Chinese cultivation novels."
     },
     {
       "id": 3,
-      "source_term": "qi",
-      "target_term": "طاقة الـ تشي",
-      "notes": "Energy force in cultivation novels"
+      "source_term": "cultivator",
+      "target_term": "ممارس",
+      "notes": "A person who practices cultivation. 'مزارع' should generally be avoided because of its agricultural meaning."
     },
     {
       "id": 4,
-      "source_term": "sect",
-      "target_term": "طائفة",
-      "notes": "Cultivation sects/factions"
+      "source_term": "qi",
+      "target_term": "طاقة الكي",
+      "notes": "Vital or spiritual energy."
     },
     {
       "id": 5,
+      "source_term": "spiritual energy",
+      "target_term": "الطاقة الروحية",
+      "notes": "Energy used for cultivation."
+    },
+    {
+      "id": 6,
+      "source_term": "spiritual power",
+      "target_term": "القوة الروحية",
+      "notes": "General supernatural spiritual strength."
+    },
+    {
+      "id": 7,
+      "source_term": "sect",
+      "target_term": "طائفة",
+      "notes": "Cultivation faction, school or organization."
+    },
+    {
+      "id": 8,
+      "source_term": "clan",
+      "target_term": "عشيرة",
+      "notes": "Usually a bloodline-based family organization."
+    },
+    {
+      "id": 9,
+      "source_term": "family",
+      "target_term": "عائلة",
+      "notes": "Use when the source means a noble or major family rather than a cultivation sect."
+    },
+    {
+      "id": 10,
       "source_term": "profound",
-      "target_term": "عميق",
-      "notes": "Often used for martial arts"
+      "target_term": "سامٍ",
+      "notes": "Used for profound laws, techniques or realms. Depending on context, 'عميق' may be more natural."
+    },
+    {
+      "id": 11,
+      "source_term": "dao",
+      "target_term": "الداو",
+      "notes": "Core philosophical/cultivation concept. Keep as a transliterated term in most fantasy contexts."
+    },
+    {
+      "id": 12,
+      "source_term": "Dao heart",
+      "target_term": "قلب الداو",
+      "notes": "Mental and spiritual conviction of a cultivator."
+    },
+    {
+      "id": 13,
+      "source_term": "Dao comprehension",
+      "target_term": "استيعاب الداو",
+      "notes": "Understanding or insight into the Dao."
+    },
+    {
+      "id": 14,
+      "source_term": "Dao law",
+      "target_term": "قانون الداو",
+      "notes": "A law or principle understood through cultivation."
+    },
+    {
+      "id": 15,
+      "source_term": "law",
+      "target_term": "قانون",
+      "notes": "In Chinese cultivation novels, can mean a fundamental cosmic principle."
+    },
+    {
+      "id": 16,
+      "source_term": "principle",
+      "target_term": "مبدأ",
+      "notes": "Use for abstract or fundamental rules of reality."
+    },
+    {
+      "id": 17,
+      "source_term": "dantian",
+      "target_term": "مركز الطاقة السُفلي",
+      "notes": "Lower energy center. 'دانتيان' may be retained in highly technical translations."
+    },
+    {
+      "id": 18,
+      "source_term": "lower dantian",
+      "target_term": "الدانتيان السفلي",
+      "notes": "Main energy reservoir in many cultivation systems."
+    },
+    {
+      "id": 19,
+      "source_term": "upper dantian",
+      "target_term": "الدانتيان العلوي",
+      "notes": "Upper spiritual or mental energy center."
+    },
+    {
+      "id": 20,
+      "source_term": "middle dantian",
+      "target_term": "الدانتيان الأوسط",
+      "notes": "Middle energy center."
+    },
+    {
+      "id": 21,
+      "source_term": "meridians",
+      "target_term": "خطوط الطاقة",
+      "notes": "Channels through which qi flows."
+    },
+    {
+      "id": 22,
+      "source_term": "energy channels",
+      "target_term": "قنوات الطاقة",
+      "notes": "Natural Arabic alternative to meridians when clarity is preferred."
+    },
+    {
+      "id": 23,
+      "source_term": "core",
+      "target_term": "النواة",
+      "notes": "Generic spiritual or magical core."
+    },
+    {
+      "id": 24,
+      "source_term": "golden core",
+      "target_term": "النواة الذهبية",
+      "notes": "Common cultivation realm."
+    },
+    {
+      "id": 25,
+      "source_term": "nascent soul",
+      "target_term": "الروح الناشئة",
+      "notes": "Cultivation realm in which a spiritual soul forms."
+    },
+    {
+      "id": 26,
+      "source_term": "soul",
+      "target_term": "الروح",
+      "notes": "Use according to context; may represent spiritual essence."
+    },
+    {
+      "id": 27,
+      "source_term": "spirit sense",
+      "target_term": "الإدراك الروحي",
+      "notes": "Supernatural perception of surroundings or energy."
+    },
+    {
+      "id": 28,
+      "source_term": "divine sense",
+      "target_term": "الحس السامي",
+      "notes": "Advanced spiritual perception. 'divine' rendered as 'سامٍ' rather than a literal religious term, per replacement policy."
+    },
+    {
+      "id": 29,
+      "source_term": "spiritual sense",
+      "target_term": "الحس الروحي",
+      "notes": "Alternative to spirit sense depending on power system."
+    },
+    {
+      "id": 30,
+      "source_term": "tribulation",
+      "target_term": "محنة سماوية",
+      "notes": "Heavenly trial, often involving lightning before a breakthrough."
+    },
+    {
+      "id": 31,
+      "source_term": "heavenly tribulation",
+      "target_term": "المحنة السماوية",
+      "notes": "Specific cultivation breakthrough trial."
+    },
+    {
+      "id": 32,
+      "source_term": "heavenly lightning",
+      "target_term": "البرق السماوي",
+      "notes": "Divine lightning during tribulation."
+    },
+    {
+      "id": 33,
+      "source_term": "breakthrough",
+      "target_term": "اختراق المستوى",
+      "notes": "Advancing into a higher cultivation realm."
+    },
+    {
+      "id": 34,
+      "source_term": "realm",
+      "target_term": "مستوى",
+      "notes": "Cultivation stage or power realm."
+    },
+    {
+      "id": 35,
+      "source_term": "cultivation realm",
+      "target_term": "مستوى الصقل",
+      "notes": "Stage in the cultivation system."
+    },
+    {
+      "id": 36,
+      "source_term": "minor realm",
+      "target_term": "مستوى فرعي",
+      "notes": "Smaller stage within a major realm."
+    },
+    {
+      "id": 37,
+      "source_term": "major realm",
+      "target_term": "مستوى رئيسي",
+      "notes": "Major cultivation stage."
+    },
+    {
+      "id": 38,
+      "source_term": "early stage",
+      "target_term": "المرحلة المبكرة",
+      "notes": "Early phase of a cultivation realm."
+    },
+    {
+      "id": 39,
+      "source_term": "middle stage",
+      "target_term": "المرحلة المتوسطة",
+      "notes": "Middle phase."
+    },
+    {
+      "id": 40,
+      "source_term": "late stage",
+      "target_term": "المرحلة المتأخرة",
+      "notes": "Late phase."
+    },
+    {
+      "id": 41,
+      "source_term": "peak",
+      "target_term": "قمة المستوى",
+      "notes": "Highest point of a realm before advancement."
+    },
+    {
+      "id": 42,
+      "source_term": "fellow daoist",
+      "target_term": "رفيق الداو",
+      "notes": "Polite form of address between cultivators."
+    },
+    {
+      "id": 43,
+      "source_term": "senior",
+      "target_term": "الأخ الأكبر",
+      "notes": "Can mean a senior disciple or more experienced cultivator; context may require 'الأستاذ الأكبر' or 'الأخ الأكبر'."
+    },
+    {
+      "id": 44,
+      "source_term": "junior",
+      "target_term": "الأخ الأصغر",
+      "notes": "Younger or less experienced cultivator."
+    },
+    {
+      "id": 45,
+      "source_term": "master",
+      "target_term": "المعلّم",
+      "notes": "Teacher or cultivation master."
+    },
+    {
+      "id": 46,
+      "source_term": "disciple",
+      "target_term": "تلميذ",
+      "notes": "Student of a master or sect."
+    },
+    {
+      "id": 47,
+      "source_term": "inner disciple",
+      "target_term": "تلميذ داخلي",
+      "notes": "Higher-ranking disciple in a sect."
+    },
+    {
+      "id": 48,
+      "source_term": "outer disciple",
+      "target_term": "تلميذ خارجي",
+      "notes": "Lower-ranking sect disciple."
+    },
+    {
+      "id": 49,
+      "source_term": "personal disciple",
+      "target_term": "التلميذ الشخصي",
+      "notes": "Directly accepted disciple of a master."
+    },
+    {
+      "id": 50,
+      "source_term": "grandmaster",
+      "target_term": "المعلّم الأعظم",
+      "notes": "Highly accomplished master."
+    },
+    {
+      "id": 51,
+      "source_term": "ancestor",
+      "target_term": "السلف",
+      "notes": "Often refers to an ancient powerful member of a sect or clan."
+    },
+    {
+      "id": 52,
+      "source_term": "sect master",
+      "target_term": "سيد الطائفة",
+      "notes": "Leader of a cultivation sect."
+    },
+    {
+      "id": 53,
+      "source_term": "patriarch",
+      "target_term": "شيخ العشيرة",
+      "notes": "Usually head of a clan or ancient family."
+    },
+    {
+      "id": 54,
+      "source_term": "spatial ring",
+      "target_term": "خاتم مكاني",
+      "notes": "Magical storage artifact."
+    },
+    {
+      "id": 55,
+      "source_term": "storage ring",
+      "target_term": "خاتم التخزين",
+      "notes": "Alternative when spatial properties are not emphasized."
+    },
+    {
+      "id": 56,
+      "source_term": "storage bag",
+      "target_term": "حقيبة تخزين",
+      "notes": "Magical inventory container."
+    },
+    {
+      "id": 57,
+      "source_term": "artifact",
+      "target_term": "قطعة أثرية",
+      "notes": "Magical or spiritual item."
+    },
+    {
+      "id": 58,
+      "source_term": "spiritual artifact",
+      "target_term": "قطعة أثرية روحية",
+      "notes": "Artifact containing spiritual power."
+    },
+    {
+      "id": 59,
+      "source_term": "treasure",
+      "target_term": "كنز",
+      "notes": "Rare magical item or valuable object."
+    },
+    {
+      "id": 60,
+      "source_term": "heaven-grade",
+      "target_term": "من رتبة سماوية",
+      "notes": "Quality or rank above ordinary levels."
+    },
+    {
+      "id": 61,
+      "source_term": "earth-grade",
+      "target_term": "من رتبة أرضية",
+      "notes": "Common Chinese fantasy ranking."
+    },
+    {
+      "id": 62,
+      "source_term": "divine-grade",
+      "target_term": "من رتبة سامية",
+      "notes": "Extremely high rank. 'divine' rendered as 'سامٍ' per replacement policy instead of a literal religious term."
+    },
+    {
+      "id": 63,
+      "source_term": "immortal",
+      "target_term": "خالد",
+      "notes": "Powerful immortal existence. In cultivation novels, may also be kept as 'شيان' only if the translation style uses Chinese terminology."
+    },
+    {
+      "id": 64,
+      "source_term": "immortal cultivator",
+      "target_term": "ممارس خالد",
+      "notes": "Cultivator who reached an immortal realm."
+    },
+    {
+      "id": 65,
+      "source_term": "immortal realm",
+      "target_term": "مملكة الخالدين",
+      "notes": "Higher plane or cultivation realm."
+    },
+    {
+      "id": 66,
+      "source_term": "ascension",
+      "target_term": "الصعود",
+      "notes": "Ascending to a higher realm or plane."
+    },
+    {
+      "id": 67,
+      "source_term": "heaven",
+      "target_term": "السماوات",
+      "notes": "Cosmic or divine order; not necessarily the religious concept."
+    },
+    {
+      "id": 68,
+      "source_term": "heavenly dao",
+      "target_term": "الداو السماوي",
+      "notes": "Cosmic law or will governing the world."
+    },
+    {
+      "id": 69,
+      "source_term": "heavenly will",
+      "target_term": "الإرادة السماوية",
+      "notes": "Personified cosmic will."
+    },
+    {
+      "id": 70,
+      "source_term": "world will",
+      "target_term": "إرادة العالم",
+      "notes": "Will or consciousness of a world."
+    },
+    {
+      "id": 71,
+      "source_term": "world",
+      "target_term": "عالم",
+      "notes": "Can mean world, plane or dimensional realm depending on context."
+    },
+    {
+      "id": 72,
+      "source_term": "plane",
+      "target_term": "بُعد",
+      "notes": "Use for a separate dimensional plane."
+    },
+    {
+      "id": 73,
+      "source_term": "dimension",
+      "target_term": "بُعد",
+      "notes": "Alternate dimensional space."
+    },
+    {
+      "id": 74,
+      "source_term": "domain",
+      "target_term": "مملكة",
+      "notes": "For a personal field of power or conceptual domain; sometimes 'مجال' is better."
+    },
+    {
+      "id": 75,
+      "source_term": "domain expansion",
+      "target_term": "توسيع المجال",
+      "notes": "Expansion of a supernatural area of influence."
+    },
+    {
+      "id": 76,
+      "source_term": "demonic beast",
+      "target_term": "وحش شيطاني",
+      "notes": "Monster possessing spiritual or demonic energy."
+    },
+    {
+      "id": 77,
+      "source_term": "spirit beast",
+      "target_term": "وحش روحي",
+      "notes": "Magical beast associated with spiritual energy."
+    },
+    {
+      "id": 78,
+      "source_term": "divine beast",
+      "target_term": "وحش سامٍ",
+      "notes": "Extremely powerful mythical beast. 'divine' rendered as 'سامٍ' per replacement policy."
+    },
+    {
+      "id": 79,
+      "source_term": "beast core",
+      "target_term": "نواة الوحش",
+      "notes": "Energy core obtained from magical beasts."
+    },
+    {
+      "id": 80,
+      "source_term": "bloodline",
+      "target_term": "سلالة الدم",
+      "notes": "Inherited supernatural lineage."
+    },
+    {
+      "id": 81,
+      "source_term": "bloodline awakening",
+      "target_term": "إيقاظ سلالة الدم",
+      "notes": "Activation of inherited power."
+    },
+    {
+      "id": 82,
+      "source_term": "blood essence",
+      "target_term": "جوهر الدم",
+      "notes": "Vital essence contained in blood."
+    },
+    {
+      "id": 83,
+      "source_term": "reincarnation",
+      "target_term": "التناسخ",
+      "notes": "Soul being reborn into another life."
+    },
+    {
+      "id": 84,
+      "source_term": "rebirth",
+      "target_term": "إعادة الميلاد",
+      "notes": "Being born again; can be physical or supernatural."
+    },
+    {
+      "id": 85,
+      "source_term": "regressor",
+      "target_term": "العائد بالزمن",
+      "notes": "Korean trope where the protagonist returns to an earlier point in their life."
+    },
+    {
+      "id": 86,
+      "source_term": "regression",
+      "target_term": "العودة بالزمن",
+      "notes": "Returning to the past while retaining memories."
+    },
+    {
+      "id": 87,
+      "source_term": "transmigrator",
+      "target_term": "المنتقل إلى عالم آخر",
+      "notes": "Person transported into another world, story or body."
+    },
+    {
+      "id": 88,
+      "source_term": "transmigration",
+      "target_term": "الانتقال إلى عالم آخر",
+      "notes": "Different from reincarnation; emphasizes crossing into another world/body."
+    },
+    {
+      "id": 89,
+      "source_term": "possessed body",
+      "target_term": "جسد مستولى عليه",
+      "notes": "When another consciousness takes over a body."
+    },
+    {
+      "id": 90,
+      "source_term": "body possession",
+      "target_term": "الاستيلاء على الجسد",
+      "notes": "Soul or consciousness taking control of another body."
+    },
+    {
+      "id": 91,
+      "source_term": "dungeon",
+      "target_term": "زنزانة",
+      "notes": "Use for RPG-style dungeon areas. 'دهليز' can be used for a more literary fantasy tone."
+    },
+    {
+      "id": 92,
+      "source_term": "dungeon hunter",
+      "target_term": "صياد الدهاليز",
+      "notes": "Korean Hunter archetype."
+    },
+    {
+      "id": 93,
+      "source_term": "hunter",
+      "target_term": "صياد",
+      "notes": "Awakened person who fights monsters in Korean fantasy."
+    },
+    {
+      "id": 94,
+      "source_term": "awakener",
+      "target_term": "مستيقظ",
+      "notes": "Person who awakened supernatural abilities."
+    },
+    {
+      "id": 95,
+      "source_term": "awakened",
+      "target_term": "مستيقظ",
+      "notes": "Common term in Korean hunter novels."
+    },
+    {
+      "id": 96,
+      "source_term": "awakening",
+      "target_term": "الاستيقاظ",
+      "notes": "Moment of gaining supernatural powers."
+    },
+    {
+      "id": 97,
+      "source_term": "ranker",
+      "target_term": "مصنف",
+      "notes": "Character ranked among top players, hunters or competitors."
+    },
+    {
+      "id": 98,
+      "source_term": "rank",
+      "target_term": "الرتبة",
+      "notes": "Power classification such as E, D, C, B, A, S."
+    },
+    {
+      "id": 99,
+      "source_term": "S-rank",
+      "target_term": "الرتبة S",
+      "notes": "Keep letter ranking unchanged."
+    },
+    {
+      "id": 100,
+      "source_term": "guild",
+      "target_term": "نقابة",
+      "notes": "Organization of hunters, adventurers or players."
+    },
+    {
+      "id": 101,
+      "source_term": "guild master",
+      "target_term": "رئيس النقابة",
+      "notes": "Leader of a guild."
+    },
+    {
+      "id": 102,
+      "source_term": "raid",
+      "target_term": "غارة",
+      "notes": "Organized attack on a dungeon, boss or enemy."
+    },
+    {
+      "id": 103,
+      "source_term": "raid team",
+      "target_term": "فريق الغارة",
+      "notes": "Group participating in a raid."
+    },
+    {
+      "id": 104,
+      "source_term": "boss",
+      "target_term": "الزعيم",
+      "notes": "Powerful dungeon or raid monster."
+    },
+    {
+      "id": 105,
+      "source_term": "world boss",
+      "target_term": "زعيم عالمي",
+      "notes": "Extremely powerful boss appearing at a global scale."
+    },
+    {
+      "id": 106,
+      "source_term": "monster wave",
+      "target_term": "موجة من الوحوش",
+      "notes": "Wave-based monster attack."
+    },
+    {
+      "id": 107,
+      "source_term": "gate",
+      "target_term": "بوابة",
+      "notes": "Portal to a dungeon or alternate space."
+    },
+    {
+      "id": 108,
+      "source_term": "portal",
+      "target_term": "بوابة انتقال",
+      "notes": "Dimensional gateway."
+    },
+    {
+      "id": 109,
+      "source_term": "system",
+      "target_term": "النظام",
+      "notes": "Game-like supernatural interface assisting the protagonist."
+    },
+    {
+      "id": 110,
+      "source_term": "system prompt",
+      "target_term": "إشعار النظام",
+      "notes": "System-generated notification."
+    },
+    {
+      "id": 111,
+      "source_term": "system notification",
+      "target_term": "إشعار النظام",
+      "notes": "Standard UI message."
+    },
+    {
+      "id": 112,
+      "source_term": "status window",
+      "target_term": "نافذة الحالة",
+      "notes": "Display containing character information."
+    },
+    {
+      "id": 113,
+      "source_term": "status screen",
+      "target_term": "شاشة الحالة",
+      "notes": "Alternative for status window."
+    },
+    {
+      "id": 114,
+      "source_term": "level up",
+      "target_term": "الارتقاء في المستوى",
+      "notes": "Increase in character level."
+    },
+    {
+      "id": 115,
+      "source_term": "level",
+      "target_term": "المستوى",
+      "notes": "Character progression level."
+    },
+    {
+      "id": 116,
+      "source_term": "experience points",
+      "target_term": "نقاط الخبرة",
+      "notes": "XP used to level up."
+    },
+    {
+      "id": 117,
+      "source_term": "experience",
+      "target_term": "الخبرة",
+      "notes": "May mean XP or general experience depending on context."
+    },
+    {
+      "id": 118,
+      "source_term": "skill",
+      "target_term": "مهارة",
+      "notes": "Special ability in a game-like system."
+    },
+    {
+      "id": 119,
+      "source_term": "passive skill",
+      "target_term": "مهارة سلبية",
+      "notes": "Skill that works automatically."
+    },
+    {
+      "id": 120,
+      "source_term": "active skill",
+      "target_term": "مهارة نشطة",
+      "notes": "Skill requiring activation."
+    },
+    {
+      "id": 121,
+      "source_term": "unique skill",
+      "target_term": "مهارة فريدة",
+      "notes": "Rare exclusive skill."
+    },
+    {
+      "id": 122,
+      "source_term": "skill tree",
+      "target_term": "شجرة المهارات",
+      "notes": "Branching progression system."
+    },
+    {
+      "id": 123,
+      "source_term": "cooldown",
+      "target_term": "فترة الانتظار",
+      "notes": "Time before a skill can be used again."
+    },
+    {
+      "id": 124,
+      "source_term": "mana",
+      "target_term": "المانا",
+      "notes": "Magical energy resource."
+    },
+    {
+      "id": 125,
+      "source_term": "mana regeneration",
+      "target_term": "استعادة المانا",
+      "notes": "Recovery of magical energy."
+    },
+    {
+      "id": 126,
+      "source_term": "health points",
+      "target_term": "نقاط الصحة",
+      "notes": "HP in RPG systems."
+    },
+    {
+      "id": 127,
+      "source_term": "HP",
+      "target_term": "نقاط الصحة",
+      "notes": "Keep HP when UI style requires original abbreviation."
+    },
+    {
+      "id": 128,
+      "source_term": "MP",
+      "target_term": "نقاط المانا",
+      "notes": "Magic points."
+    },
+    {
+      "id": 129,
+      "source_term": "strength",
+      "target_term": "القوة",
+      "notes": "Common RPG attribute."
+    },
+    {
+      "id": 130,
+      "source_term": "agility",
+      "target_term": "الرشاقة",
+      "notes": "Movement and reaction attribute."
+    },
+    {
+      "id": 131,
+      "source_term": "vitality",
+      "target_term": "الحيوية",
+      "notes": "Health/endurance-related stat."
+    },
+    {
+      "id": 132,
+      "source_term": "intelligence",
+      "target_term": "الذكاء",
+      "notes": "Magic or mental attribute."
+    },
+    {
+      "id": 133,
+      "source_term": "luck",
+      "target_term": "الحظ",
+      "notes": "RPG luck stat."
+    },
+    {
+      "id": 134,
+      "source_term": "stat points",
+      "target_term": "نقاط السمات",
+      "notes": "Points used to improve attributes."
+    },
+    {
+      "id": 135,
+      "source_term": "quest",
+      "target_term": "مهمة",
+      "notes": "System-assigned or game-like mission."
+    },
+    {
+      "id": 136,
+      "source_term": "main quest",
+      "target_term": "المهمة الرئيسية",
+      "notes": "Primary storyline objective."
+    },
+    {
+      "id": 137,
+      "source_term": "side quest",
+      "target_term": "مهمة جانبية",
+      "notes": "Optional mission."
+    },
+    {
+      "id": 138,
+      "source_term": "reward",
+      "target_term": "مكافأة",
+      "notes": "Reward from quests, achievements or battles."
+    },
+    {
+      "id": 139,
+      "source_term": "achievement",
+      "target_term": "إنجاز",
+      "notes": "Special accomplishment recognized by the system."
+    },
+    {
+      "id": 140,
+      "source_term": "title",
+      "target_term": "لقب",
+      "notes": "System-granted title providing bonuses or recognition."
+    },
+    {
+      "id": 141,
+      "source_term": "inventory",
+      "target_term": "المخزون",
+      "notes": "Storage of system items."
+    },
+    {
+      "id": 142,
+      "source_term": "item",
+      "target_term": "عنصر",
+      "notes": "Game item."
+    },
+    {
+      "id": 143,
+      "source_term": "equipment",
+      "target_term": "معدات",
+      "notes": "Wearable or usable gear."
+    },
+    {
+      "id": 144,
+      "source_term": "legendary item",
+      "target_term": "عنصر أسطوري",
+      "notes": "High rarity item."
+    },
+    {
+      "id": 145,
+      "source_term": "unique item",
+      "target_term": "عنصر فريد",
+      "notes": "Rare or exclusive item."
+    },
+    {
+      "id": 146,
+      "source_term": "hidden class",
+      "target_term": "فئة خفية",
+      "notes": "Secret or rare RPG class."
+    },
+    {
+      "id": 147,
+      "source_term": "class",
+      "target_term": "فئة",
+      "notes": "Character archetype or job."
+    },
+    {
+      "id": 148,
+      "source_term": "job",
+      "target_term": "تخصص",
+      "notes": "Can refer to RPG class/profession in Korean novels."
+    },
+    {
+      "id": 149,
+      "source_term": "skill proficiency",
+      "target_term": "إتقان المهارة",
+      "notes": "Level of mastery of a skill."
+    },
+    {
+      "id": 150,
+      "source_term": "mastery",
+      "target_term": "الإتقان",
+      "notes": "Degree of understanding or control."
+    },
+    {
+      "id": 151,
+      "source_term": "potential",
+      "target_term": "الموهبة الكامنة",
+      "notes": "Latent capacity for growth."
+    },
+    {
+      "id": 152,
+      "source_term": "talent",
+      "target_term": "موهبة",
+      "notes": "Natural aptitude."
+    },
+    {
+      "id": 153,
+      "source_term": "evolution",
+      "target_term": "تطور",
+      "notes": "Transformation into a stronger form."
+    },
+    {
+      "id": 154,
+      "source_term": "evolve",
+      "target_term": "يتطور",
+      "notes": "Verb form."
+    },
+    {
+      "id": 155,
+      "source_term": "mutation",
+      "target_term": "تحور",
+      "notes": "Unusual biological or magical transformation."
+    },
+    {
+      "id": 156,
+      "source_term": "constellation",
+      "target_term": "كوكبة راعية",
+      "notes": "Higher cosmic beings who observe or sponsor protagonists."
+    },
+    {
+      "id": 157,
+      "source_term": "sponsor",
+      "target_term": "راعٍ",
+      "notes": "Higher entity providing power or rewards."
+    },
+    {
+      "id": 158,
+      "source_term": "incarnation",
+      "target_term": "تجسد",
+      "notes": "Embodiment or manifestation of a higher being."
+    },
+    {
+      "id": 159,
+      "source_term": "avatar",
+      "target_term": "تجسد",
+      "notes": "Physical manifestation or projected body."
+    },
+    {
+      "id": 160,
+      "source_term": "divine being",
+      "target_term": "كائن سامٍ",
+      "notes": "Supernatural higher existence, close to a 'deity'. Rendered as 'كائن سامٍ' per replacement policy instead of a literal religious term."
+    },
+    {
+      "id": 161,
+      "source_term": "demon lord",
+      "target_term": "سيد الشياطين",
+      "notes": "Powerful demonic ruler."
+    },
+    {
+      "id": 162,
+      "source_term": "demon king",
+      "target_term": "ملك الشياطين",
+      "notes": "Common Korean/Japanese fantasy title."
+    },
+    {
+      "id": 163,
+      "source_term": "demon lord's army",
+      "target_term": "جيش سيد الشياطين",
+      "notes": "Fantasy military faction."
+    },
+    {
+      "id": 164,
+      "source_term": "magic circle",
+      "target_term": "مصفوفة سحرية",
+      "notes": "Magic formation or spell array."
+    },
+    {
+      "id": 165,
+      "source_term": "formation",
+      "target_term": "مصفوفة",
+      "notes": "Cultivation magical formation or array."
+    },
+    {
+      "id": 166,
+      "source_term": "array",
+      "target_term": "مصفوفة",
+      "notes": "Spell or cultivation formation."
+    },
+    {
+      "id": 167,
+      "source_term": "rune",
+      "target_term": "رون",
+      "notes": "Magical symbol."
+    },
+    {
+      "id": 168,
+      "source_term": "spell",
+      "target_term": "تعويذة",
+      "notes": "Magical technique or spell."
+    },
+    {
+      "id": 169,
+      "source_term": "incantation",
+      "target_term": "ترنيمة سحرية",
+      "notes": "Spoken magical formula."
+    },
+    {
+      "id": 170,
+      "source_term": "martial arts",
+      "target_term": "فنون قتالية",
+      "notes": "General martial techniques."
+    },
+    {
+      "id": 171,
+      "source_term": "martial technique",
+      "target_term": "تقنية قتالية",
+      "notes": "Combat technique in Wuxia/Xianxia."
+    },
+    {
+      "id": 172,
+      "source_term": "secret technique",
+      "target_term": "تقنية سرية",
+      "notes": "Rare or hidden cultivation technique."
+    },
+    {
+      "id": 173,
+      "source_term": "forbidden technique",
+      "target_term": "تقنية محرمة",
+      "notes": "Dangerous or prohibited technique."
+    },
+    {
+      "id": 174,
+      "source_term": "sword intent",
+      "target_term": "نية السيف",
+      "notes": "Advanced swordsmanship concept."
+    },
+    {
+      "id": 175,
+      "source_term": "sword qi",
+      "target_term": "طاقة السيف",
+      "notes": "Qi manifested through swordsmanship."
+    },
+    {
+      "id": 176,
+      "source_term": "sword domain",
+      "target_term": "مجال السيف",
+      "notes": "Area dominated by sword intent or sword laws."
+    },
+    {
+      "id": 177,
+      "source_term": "killing intent",
+      "target_term": "نية القتل",
+      "notes": "Intimidating murderous aura."
+    },
+    {
+      "id": 178,
+      "source_term": "battle intent",
+      "target_term": "نية القتال",
+      "notes": "Fighting spirit or battle aura."
+    },
+    {
+      "id": 179,
+      "source_term": "bloodlust",
+      "target_term": "هوس الدماء",
+      "notes": "Intense murderous bloodthirst."
+    },
+    {
+      "id": 180,
+      "source_term": "aura",
+      "target_term": "هالة",
+      "notes": "Presence or supernatural pressure."
+    },
+    {
+      "id": 181,
+      "source_term": "pressure",
+      "target_term": "ضغط",
+      "notes": "Spiritual or physical pressure emitted by a powerful character."
+    },
+    {
+      "id": 182,
+      "source_term": "suppression",
+      "target_term": "قمع",
+      "notes": "Powerful force preventing weaker opponents from acting."
+    },
+    {
+      "id": 183,
+      "source_term": "spiritual pressure",
+      "target_term": "ضغط روحي",
+      "notes": "Supernatural intimidation."
+    },
+    {
+      "id": 184,
+      "source_term": "healing potion",
+      "target_term": "جرعة علاج",
+      "notes": "Game or fantasy healing item."
+    },
+    {
+      "id": 185,
+      "source_term": "mana potion",
+      "target_term": "جرعة مانا",
+      "notes": "Restores mana."
+    },
+    {
+      "id": 186,
+      "source_term": "elixir",
+      "target_term": "إكسير",
+      "notes": "Powerful magical or cultivation medicine."
+    },
+    {
+      "id": 187,
+      "source_term": "pill",
+      "target_term": "حبوب",
+      "notes": "Cultivation medicine, often better as 'حبة' in singular."
+    },
+    {
+      "id": 188,
+      "source_term": "spiritual pill",
+      "target_term": "حبة روحية",
+      "notes": "Medicine containing spiritual energy."
+    },
+    {
+      "id": 189,
+      "source_term": "healing pill",
+      "target_term": "حبة علاجية",
+      "notes": "Healing cultivation pill."
+    },
+    {
+      "id": 190,
+      "source_term": "poison pill",
+      "target_term": "حبة سامة",
+      "notes": "Poisonous cultivation pill."
+    },
+    {
+      "id": 191,
+      "source_term": "alchemy",
+      "target_term": "الكيمياء",
+      "notes": "In cultivation novels, usually the art of refining pills and medicines."
+    },
+    {
+      "id": 192,
+      "source_term": "pill refining",
+      "target_term": "صقل الحبوب",
+      "notes": "Process of creating cultivation pills."
+    },
+    {
+      "id": 193,
+      "source_term": "alchemist",
+      "target_term": "كيميائي",
+      "notes": "Person who refines pills/elixirs."
+    },
+    {
+      "id": 194,
+      "source_term": "artifact refinement",
+      "target_term": "صقل القطع الأثرية",
+      "notes": "Crafting and improving magical artifacts."
+    },
+    {
+      "id": 195,
+      "source_term": "smith",
+      "target_term": "حداد",
+      "notes": "Weapon crafter; context may justify 'صانع أسلحة'."
+    },
+    {
+      "id": 196,
+      "source_term": "forge",
+      "target_term": "يصهر ويصنع",
+      "notes": "Refining or forging weapons/artifacts."
+    },
+    {
+      "id": 197,
+      "source_term": "spirit stone",
+      "target_term": "حجر روحي",
+      "notes": "Cultivation currency and energy source."
+    },
+    {
+      "id": 198,
+      "source_term": "spirit crystal",
+      "target_term": "بلورة روحية",
+      "notes": "Higher-grade energy crystal."
+    },
+    {
+      "id": 199,
+      "source_term": "essence",
+      "target_term": "جوهر",
+      "notes": "Fundamental concentrated energy or substance."
+    },
+    {
+      "id": 200,
+      "source_term": "true essence",
+      "target_term": "الجوهر الحقيقي",
+      "notes": "Refined internal energy."
+    },
+    {
+      "id": 201,
+      "source_term": "origin energy",
+      "target_term": "طاقة الأصل",
+      "notes": "Primordial or fundamental source energy."
+    },
+    {
+      "id": 202,
+      "source_term": "primordial",
+      "target_term": "بدائي",
+      "notes": "Ancient primordial state or force."
+    },
+    {
+      "id": 203,
+      "source_term": "chaos energy",
+      "target_term": "طاقة الفوضى",
+      "notes": "Primordial chaotic energy in Xianxia fantasy."
+    },
+    {
+      "id": 204,
+      "source_term": "void",
+      "target_term": "الفراغ",
+      "notes": "Cosmic emptiness or void."
+    },
+    {
+      "id": 205,
+      "source_term": "void energy",
+      "target_term": "طاقة الفراغ",
+      "notes": "Energy associated with the void."
+    },
+    {
+      "id": 206,
+      "source_term": "space law",
+      "target_term": "قانون الفضاء",
+      "notes": "Control over spatial principles."
+    },
+    {
+      "id": 207,
+      "source_term": "time law",
+      "target_term": "قانون الزمن",
+      "notes": "Control over temporal principles."
+    },
+    {
+      "id": 208,
+      "source_term": "teleportation",
+      "target_term": "انتقال آني",
+      "notes": "Instant movement through space."
+    },
+    {
+      "id": 209,
+      "source_term": "spatial distortion",
+      "target_term": "تشوه مكاني",
+      "notes": "Distortion of space caused by power."
+    },
+    {
+      "id": 210,
+      "source_term": "absolute defense",
+      "target_term": "دفاع مطلق",
+      "notes": "Defense capable of resisting almost any attack."
+    },
+    {
+      "id": 211,
+      "source_term": "absolute power",
+      "target_term": "قوة مطلقة",
+      "notes": "Extreme or unrestricted power."
+    },
+    {
+      "id": 212,
+      "source_term": "cheat ability",
+      "target_term": "قدرة غش",
+      "notes": "Overpowered ability that breaks normal rules; in literary Arabic, 'قدرة خارقة غير عادلة' may be more natural."
+    },
+    {
+      "id": 213,
+      "source_term": "overpowered",
+      "target_term": "مفرط القوة",
+      "notes": "Character or ability far stronger than normal."
+    },
+    {
+      "id": 214,
+      "source_term": "OP",
+      "target_term": "مفرط القوة",
+      "notes": "Internet shorthand for overpowered."
+    },
+    {
+      "id": 215,
+      "source_term": "plot armor",
+      "target_term": "حصانة الحبكة",
+      "notes": "Narrative protection that keeps a character alive or successful."
+    },
+    {
+      "id": 216,
+      "source_term": "protagonist",
+      "target_term": "بطل الرواية",
+      "notes": "Main character."
+    },
+    {
+      "id": 217,
+      "source_term": "antagonist",
+      "target_term": "الخصم",
+      "notes": "Main opposing character or force."
+    },
+    {
+      "id": 218,
+      "source_term": "supporting character",
+      "target_term": "شخصية داعمة",
+      "notes": "Secondary character."
+    },
+    {
+      "id": 219,
+      "source_term": "young master",
+      "target_term": "السيد الشاب",
+      "notes": "Common Chinese fantasy term for privileged heir."
+    },
+    {
+      "id": 220,
+      "source_term": "young miss",
+      "target_term": "الآنسة الشابة",
+      "notes": "Young noblewoman or clan heir."
+    },
+    {
+      "id": 221,
+      "source_term": "face",
+      "target_term": "الهيبة",
+      "notes": "In Chinese novels, 'saving face' should usually be translated by 'حفظ الهيبة/الكرامة' rather than literal 'الوجه'."
+    },
+    {
+      "id": 222,
+      "source_term": "lose face",
+      "target_term": "فقدان الهيبة",
+      "notes": "Public humiliation or loss of status."
+    },
+    {
+      "id": 223,
+      "source_term": "save face",
+      "target_term": "حفظ الهيبة",
+      "notes": "Avoid literal translation where it sounds unnatural."
+    },
+    {
+      "id": 224,
+      "source_term": "backing",
+      "target_term": "سند",
+      "notes": "Powerful person, clan or organization supporting someone."
+    },
+    {
+      "id": 225,
+      "source_term": "background",
+      "target_term": "خلفية",
+      "notes": "Family, organization or social background."
+    },
+    {
+      "id": 226,
+      "source_term": "young generation",
+      "target_term": "الجيل الشاب",
+      "notes": "Younger cultivators or competitors."
+    },
+    {
+      "id": 227,
+      "source_term": "older generation",
+      "target_term": "الجيل الأكبر",
+      "notes": "Senior cultivators."
+    },
+    {
+      "id": 228,
+      "source_term": "peerless",
+      "target_term": "لا مثيل له",
+      "notes": "Extremely superior or unmatched."
+    },
+    {
+      "id": 229,
+      "source_term": "invincible",
+      "target_term": "لا يُقهر",
+      "notes": "Cannot be defeated within the relevant context."
+    },
+    {
+      "id": 230,
+      "source_term": "unparalleled",
+      "target_term": "لا نظير له",
+      "notes": "Unmatched."
+    },
+    {
+      "id": 231,
+      "source_term": "destiny",
+      "target_term": "القدر",
+      "notes": "Fate or predetermined destiny."
+    },
+    {
+      "id": 232,
+      "source_term": "fate",
+      "target_term": "المصير",
+      "notes": "May be used interchangeably with destiny depending on context."
+    },
+    {
+      "id": 233,
+      "source_term": "fate point",
+      "target_term": "نقطة قدر",
+      "notes": "System resource tied to destiny."
+    },
+    {
+      "id": 234,
+      "source_term": "karma",
+      "target_term": "الكارما",
+      "notes": "Causal or karmic force common in cultivation stories."
+    },
+    {
+      "id": 235,
+      "source_term": "karma thread",
+      "target_term": "خيط الكارما",
+      "notes": "Supernatural karmic connection."
+    },
+    {
+      "id": 236,
+      "source_term": "heaven's chosen",
+      "target_term": "مختار السماء",
+      "notes": "Extremely gifted individual favored by fate or heaven."
+    },
+    {
+      "id": 237,
+      "source_term": "chosen one",
+      "target_term": "المختار",
+      "notes": "Destined protagonist or individual."
+    },
+    {
+      "id": 238,
+      "source_term": "opportunity",
+      "target_term": "فرصة حظ",
+      "notes": "In cultivation novels, can mean a fortuitous opportunity or rare chance."
+    },
+    {
+      "id": 239,
+      "source_term": "fortuitous encounter",
+      "target_term": "لقاء استثنائي",
+      "notes": "Rare lucky encounter that grants resources, inheritance or power."
+    },
+    {
+      "id": 240,
+      "source_term": "inheritance",
+      "target_term": "إرث",
+      "notes": "Legacy of a powerful predecessor, often containing techniques or treasures."
+    },
+    {
+      "id": 241,
+      "source_term": "inheritance ground",
+      "target_term": "أرض الإرث",
+      "notes": "Place containing an ancient inheritance."
+    },
+    {
+      "id": 242,
+      "source_term": "secret realm",
+      "target_term": "مملكة سرية",
+      "notes": "Hidden magical world or realm."
+    },
+    {
+      "id": 243,
+      "source_term": "forbidden land",
+      "target_term": "أرض محرمة",
+      "notes": "Extremely dangerous restricted region."
+    },
+    {
+      "id": 244,
+      "source_term": "ancient ruin",
+      "target_term": "أطلال قديمة",
+      "notes": "Remains of an ancient civilization or sect."
+    },
+    {
+      "id": 245,
+      "source_term": "ancient battlefield",
+      "target_term": "ساحة المعركة القديمة",
+      "notes": "Ruined battlefield containing treasures or lingering energies."
+    },
+    {
+      "id": 246,
+      "source_term": "dimension",
+      "target_term": "بُعد",
+      "notes": "Separate spatial realm."
+    },
+    {
+      "id": 247,
+      "source_term": "small world",
+      "target_term": "عالم صغير",
+      "notes": "Miniature internal world or pocket realm."
+    },
+    {
+      "id": 248,
+      "source_term": "pocket dimension",
+      "target_term": "بُعد جيبي",
+      "notes": "Small isolated dimensional space."
+    },
+    {
+      "id": 249,
+      "source_term": "space-time",
+      "target_term": "الزمكان",
+      "notes": "Space-time concept."
+    },
+    {
+      "id": 250,
+      "source_term": "heaven-defying",
+      "target_term": "متحدٍ للسماء",
+      "notes": "Extremely rebellious against fate, heaven or natural laws."
+    },
+    {
+      "id": 251,
+      "source_term": "heaven-defying talent",
+      "target_term": "موهبة تتحدى السماء",
+      "notes": "Exceptionally gifted talent."
+    },
+    {
+      "id": 252,
+      "source_term": "sky-breaking",
+      "target_term": "محطم للسماء",
+      "notes": "Hyperbolic cultivation/fantasy expression; context may require a more natural paraphrase."
+    },
+    {
+      "id": 253,
+      "source_term": "monster",
+      "target_term": "وحش",
+      "notes": "Can also describe an exceptionally powerful human; translate according to context."
+    },
+    {
+      "id": 254,
+      "source_term": "battle maniac",
+      "target_term": "مهووس بالقتال",
+      "notes": "Character obsessed with fighting."
+    },
+    {
+      "id": 255,
+      "source_term": "battle god",
+      "target_term": "الأسطوري في القتال",
+      "notes": "Mighty warrior title. 'god' rendered as 'أسطوري' per replacement policy instead of a literal religious term."
+    },
+    {
+      "id": 256,
+      "source_term": "war god",
+      "target_term": "الأسطوري في الحرب",
+      "notes": "Common powerful title. 'god' rendered as 'أسطوري' per replacement policy instead of a literal religious term."
+    },
+    {
+      "id": 257,
+      "source_term": "supreme",
+      "target_term": "سامٍ",
+      "notes": "Can mean highest-ranking, supreme or exalted depending on context."
+    },
+    {
+      "id": 258,
+      "source_term": "supreme elder",
+      "target_term": "الشيخ الأسمى",
+      "notes": "Extremely senior member of a sect."
+    },
+    {
+      "id": 259,
+      "source_term": "elders",
+      "target_term": "الشيوخ",
+      "notes": "Senior members of a sect, clan or guild."
+    },
+    {
+      "id": 260,
+      "source_term": "grand elder",
+      "target_term": "الشيخ الأكبر",
+      "notes": "Very high-ranking elder."
+    },
+    {
+      "id": 261,
+      "source_term": "martial ancestor",
+      "target_term": "السلف القتالي",
+      "notes": "Ancient martial predecessor."
+    },
+    {
+      "id": 262,
+      "source_term": "ancestor spirit",
+      "target_term": "روح السلف",
+      "notes": "Spirit or remnant of an ancient ancestor."
+    },
+    {
+      "id": 263,
+      "source_term": "spirit weapon",
+      "target_term": "سلاح روحي",
+      "notes": "Weapon with spiritual properties."
+    },
+    {
+      "id": 264,
+      "source_term": "divine weapon",
+      "target_term": "سلاح سامٍ",
+      "notes": "Extremely powerful weapon. 'divine' rendered as 'سامٍ' per replacement policy."
+    },
+    {
+      "id": 265,
+      "source_term": "imperial weapon",
+      "target_term": "سلاح إمبراطوري",
+      "notes": "Very high-level weapon in fantasy cultivation systems."
+    },
+    {
+      "id": 266,
+      "source_term": "god weapon",
+      "target_term": "سلاح أسطوري",
+      "notes": "Use according to setting terminology. 'god' rendered as 'أسطوري' per replacement policy."
+    },
+    {
+      "id": 267,
+      "source_term": "soul weapon",
+      "target_term": "سلاح روحي",
+      "notes": "Weapon linked to soul or spirit."
+    },
+    {
+      "id": 268,
+      "source_term": "weapon spirit",
+      "target_term": "روح السلاح",
+      "notes": "Sentient spirit residing in a weapon."
+    },
+    {
+      "id": 269,
+      "source_term": "sword spirit",
+      "target_term": "روح السيف",
+      "notes": "Spirit bound to or manifested from a sword."
+    },
+    {
+      "id": 270,
+      "source_term": "artifact spirit",
+      "target_term": "روح القطعة الأثرية",
+      "notes": "Sentient spirit inside an artifact."
+    },
+    {
+      "id": 271,
+      "source_term": "spirit fire",
+      "target_term": "نار روحية",
+      "notes": "Magical or spiritual flame."
+    },
+    {
+      "id": 272,
+      "source_term": "heavenly flame",
+      "target_term": "لهب سماوي",
+      "notes": "Extremely rare supernatural flame."
+    },
+    {
+      "id": 273,
+      "source_term": "soul fire",
+      "target_term": "نار الروح",
+      "notes": "Fire affecting or fueled by spiritual essence."
+    },
+    {
+      "id": 274,
+      "source_term": "demonic fire",
+      "target_term": "نار شيطانية",
+      "notes": "Demonic supernatural flame."
+    },
+    {
+      "id": 275,
+      "source_term": "flame seed",
+      "target_term": "بذرة اللهب",
+      "notes": "Seed or source from which a special flame develops."
+    },
+    {
+      "id": 276,
+      "source_term": "Qi deviation",
+      "target_term": "انحراف طاقة الكي",
+      "notes": "Cultivation backlash caused by improper energy circulation."
+    },
+    {
+      "id": 277,
+      "source_term": "heart demon",
+      "target_term": "شيطان القلب",
+      "notes": "Inner mental/spiritual demon that obstructs cultivation."
+    },
+    {
+      "id": 278,
+      "source_term": "inner demon",
+      "target_term": "شيطان داخلي",
+      "notes": "Psychological or spiritual obstacle."
+    },
+    {
+      "id": 279,
+      "source_term": "obsession",
+      "target_term": "هوس",
+      "notes": "Can become a cultivation mental obstacle."
+    },
+    {
+      "id": 280,
+      "source_term": "mental state",
+      "target_term": "الحالة الذهنية",
+      "notes": "Psychological/spiritual condition relevant to cultivation."
+    },
+    {
+      "id": 281,
+      "source_term": "enlightenment",
+      "target_term": "الاستنارة",
+      "notes": "Sudden realization or deep understanding in cultivation."
+    },
+    {
+      "id": 282,
+      "source_term": "epiphany",
+      "target_term": "استنارة مفاجئة",
+      "notes": "Sudden realization."
+    },
+    {
+      "id": 283,
+      "source_term": "comprehension",
+      "target_term": "استيعاب",
+      "notes": "Understanding of laws, techniques or concepts."
+    },
+    {
+      "id": 284,
+      "source_term": "insight",
+      "target_term": "بصيرة",
+      "notes": "Deep supernatural understanding."
+    },
+    {
+      "id": 285,
+      "source_term": "martial spirit",
+      "target_term": "الروح القتالية",
+      "notes": "Fighting spirit or martial essence."
+    },
+    {
+      "id": 286,
+      "source_term": "war intent",
+      "target_term": "نية الحرب",
+      "notes": "Massive battlefield killing/fighting intent."
+    },
+    {
+      "id": 287,
+      "source_term": "domain",
+      "target_term": "مجال",
+      "notes": "Use 'مجال' when referring to an active area of influence rather than a realm/world."
+    },
+    {
+      "id": 288,
+      "source_term": "field",
+      "target_term": "مجال",
+      "notes": "Supernatural field of influence."
+    },
+    {
+      "id": 289,
+      "source_term": "suppression field",
+      "target_term": "مجال قمع",
+      "notes": "Area that weakens others."
+    },
+    {
+      "id": 290,
+      "source_term": "barrier",
+      "target_term": "حاجز",
+      "notes": "Magical barrier."
+    },
+    {
+      "id": 291,
+      "source_term": "protective barrier",
+      "target_term": "حاجز واقٍ",
+      "notes": "Defensive magical barrier."
+    },
+    {
+      "id": 292,
+      "source_term": "seal",
+      "target_term": "ختم",
+      "notes": "Magical or spiritual seal."
+    },
+    {
+      "id": 293,
+      "source_term": "sealing technique",
+      "target_term": "تقنية الختم",
+      "notes": "Technique used to seal power, objects or beings."
+    },
+    {
+      "id": 294,
+      "source_term": "formation master",
+      "target_term": "سيد المصفوفات",
+      "notes": "Expert in magical/cultivation formations."
+    },
+    {
+      "id": 295,
+      "source_term": "talisman",
+      "target_term": "تعويذة",
+      "notes": "Paper or magical charm with special power."
+    },
+    {
+      "id": 296,
+      "source_term": "talisman paper",
+      "target_term": "ورقة تعويذة",
+      "notes": "Paper carrying magical symbols."
+    },
+    {
+      "id": 297,
+      "source_term": "clone",
+      "target_term": "نسخة مستنسخة",
+      "notes": "Duplicate body or combat manifestation."
+    },
+    {
+      "id": 298,
+      "source_term": "avatar body",
+      "target_term": "جسد تجسد",
+      "notes": "Temporary or projected body."
+    },
+    {
+      "id": 299,
+      "source_term": "physical body",
+      "target_term": "الجسد المادي",
+      "notes": "The physical body in cultivation context."
+    },
+    {
+      "id": 300,
+      "source_term": "body refinement",
+      "target_term": "صقل الجسد",
+      "notes": "Cultivation path focused on physical strengthening."
+    },
+    {
+      "id": 301,
+      "source_term": "body tempering",
+      "target_term": "تقوية الجسد",
+      "notes": "Physical strengthening through cultivation."
+    },
+    {
+      "id": 302,
+      "source_term": "physical cultivation",
+      "target_term": "صقل الجسد",
+      "notes": "Cultivation focused on body rather than spiritual energy."
+    },
+    {
+      "id": 303,
+      "source_term": "soul cultivation",
+      "target_term": "صقل الروح",
+      "notes": "Cultivation focused on the soul."
+    },
+    {
+      "id": 304,
+      "source_term": "soul attack",
+      "target_term": "هجوم روحي",
+      "notes": "Attack targeting the soul or consciousness."
+    },
+    {
+      "id": 305,
+      "source_term": "spiritual attack",
+      "target_term": "هجوم روحي",
+      "notes": "Supernatural attack on spirit or mind."
+    },
+    {
+      "id": 306,
+      "source_term": "mental attack",
+      "target_term": "هجوم ذهني",
+      "notes": "Attack targeting the mind."
+    },
+    {
+      "id": 307,
+      "source_term": "consciousness",
+      "target_term": "الوعي",
+      "notes": "Mind or conscious awareness."
+    },
+    {
+      "id": 308,
+      "source_term": "spiritual consciousness",
+      "target_term": "الوعي الروحي",
+      "notes": "Supernatural consciousness used for perception or control."
+    },
+    {
+      "id": 309,
+      "source_term": "divine consciousness",
+      "target_term": "الوعي السامي",
+      "notes": "Advanced supernatural consciousness. 'divine' rendered as 'سامٍ' per replacement policy."
+    },
+    {
+      "id": 310,
+      "source_term": "inner world",
+      "target_term": "العالم الداخلي",
+      "notes": "Internal spiritual world or mental space."
+    },
+    {
+      "id": 311,
+      "source_term": "spiritual sea",
+      "target_term": "بحر الروح",
+      "notes": "Inner spiritual sea commonly used in Chinese cultivation."
+    },
+    {
+      "id": 312,
+      "source_term": "sea of consciousness",
+      "target_term": "بحر الوعي",
+      "notes": "Mental/spiritual internal region."
+    },
+    {
+      "id": 313,
+      "source_term": "golden body",
+      "target_term": "الجسد الذهبي",
+      "notes": "Powerful enhanced body realm."
+    },
+    {
+      "id": 314,
+      "source_term": "immortal body",
+      "target_term": "الجسد الخالد",
+      "notes": "Body capable of surviving beyond normal mortality."
+    },
+    {
+      "id": 315,
+      "source_term": "divine body",
+      "target_term": "الجسد السامي",
+      "notes": "Special powerful body. 'divine' rendered as 'سامٍ' per replacement policy."
+    },
+    {
+      "id": 316,
+      "source_term": "holy body",
+      "target_term": "الجسد المقدس",
+      "notes": "Rare special constitution."
+    },
+    {
+      "id": 317,
+      "source_term": "constitution",
+      "target_term": "بنية جسدية",
+      "notes": "Special innate body type in cultivation novels."
+    },
+    {
+      "id": 318,
+      "source_term": "special physique",
+      "target_term": "بنية جسدية خاصة",
+      "notes": "Rare supernatural constitution."
+    },
+    {
+      "id": 319,
+      "source_term": "divine physique",
+      "target_term": "بنية جسدية سامية",
+      "notes": "Extremely rare innate constitution. 'divine' rendered as 'سامٍ' per replacement policy."
+    },
+    {
+      "id": 320,
+      "source_term": "genius",
+      "target_term": "عبقري",
+      "notes": "Extremely talented character."
+    },
+    {
+      "id": 321,
+      "source_term": "prodigy",
+      "target_term": "نوابغ",
+      "notes": "Exceptional young genius."
+    },
+    {
+      "id": 322,
+      "source_term": "supreme genius",
+      "target_term": "عبقري منقطع النظير",
+      "notes": "Extremely rare talent."
+    },
+    {
+      "id": 323,
+      "source_term": "heavenly genius",
+      "target_term": "عبقري سماوي",
+      "notes": "Exceptional heaven-favored genius."
+    },
+    {
+      "id": 324,
+      "source_term": "trash",
+      "target_term": "حثالة",
+      "notes": "Insult commonly used toward weak characters; can be softened depending on narrative tone."
+    },
+    {
+      "id": 325,
+      "source_term": "cripple",
+      "target_term": "مُعاق",
+      "notes": "In cultivation novels often means someone whose cultivation is crippled; more natural: 'مشلول عن الصقل' or 'فاقد لقوته'."
+    },
+    {
+      "id": 326,
+      "source_term": "crippled cultivation",
+      "target_term": "صقل معطوب",
+      "notes": "Cultivation ability has been destroyed or severely damaged."
+    },
+    {
+      "id": 327,
+      "source_term": "cultivation base",
+      "target_term": "قاعدة الصقل",
+      "notes": "Accumulated cultivation power and foundation."
+    },
+    {
+      "id": 328,
+      "source_term": "cultivation foundation",
+      "target_term": "أساس الصقل",
+      "notes": "Foundation supporting future cultivation."
+    },
+    {
+      "id": 329,
+      "source_term": "foundation establishment",
+      "target_term": "تأسيس الأساس",
+      "notes": "Common early cultivation realm."
+    },
+    {
+      "id": 330,
+      "source_term": "qi condensation",
+      "target_term": "تكثيف الكي",
+      "notes": "Early stage of cultivation."
+    },
+    {
+      "id": 331,
+      "source_term": "core formation",
+      "target_term": "تكوين النواة",
+      "notes": "Realm where the golden core forms."
+    },
+    {
+      "id": 332,
+      "source_term": "nascent soul realm",
+      "target_term": "مستوى الروح الناشئة",
+      "notes": "Higher cultivation realm."
+    },
+    {
+      "id": 333,
+      "source_term": "void refinement",
+      "target_term": "صقل الفراغ",
+      "notes": "Specific high-level cultivation stage depending on novel system."
+    },
+    {
+      "id": 334,
+      "source_term": "return to void",
+      "target_term": "العودة إلى الفراغ",
+      "notes": "Common translated name of a high cultivation realm."
+    },
+    {
+      "id": 335,
+      "source_term": "heavenly immortal",
+      "target_term": "خالد سماوي",
+      "notes": "High immortal realm."
+    },
+    {
+      "id": 336,
+      "source_term": "golden immortal",
+      "target_term": "الخالد الذهبي",
+      "notes": "Very high immortal rank."
+    },
+    {
+      "id": 337,
+      "source_term": "immortal emperor",
+      "target_term": "إمبراطور الخالدين",
+      "notes": "Supreme immortal ruler."
+    },
+    {
+      "id": 338,
+      "source_term": "immortal king",
+      "target_term": "ملك الخالدين",
+      "notes": "High immortal title."
+    },
+    {
+      "id": 339,
+      "source_term": "supreme emperor",
+      "target_term": "الإمبراطور الأسمى",
+      "notes": "Very high ruler title."
+    },
+    {
+      "id": 340,
+      "source_term": "ancient emperor",
+      "target_term": "الإمبراطور القديم",
+      "notes": "Legendary emperor from ancient times."
+    },
+    {
+      "id": 341,
+      "source_term": "legendary",
+      "target_term": "أسطوري",
+      "notes": "Rare or extraordinarily powerful."
+    },
+    {
+      "id": 342,
+      "source_term": "mythical",
+      "target_term": "أسطوري",
+      "notes": "Myth-level rarity or existence."
+    },
+    {
+      "id": 343,
+      "source_term": "epic",
+      "target_term": "ملحمي",
+      "notes": "High rarity tier or grand scale depending on context."
+    },
+    {
+      "id": 344,
+      "source_term": "rare",
+      "target_term": "نادر",
+      "notes": "Rarity classification."
+    },
+    {
+      "id": 345,
+      "source_term": "common",
+      "target_term": "شائع",
+      "notes": "Lowest/basic rarity."
+    },
+    {
+      "id": 346,
+      "source_term": "uncommon",
+      "target_term": "غير شائع",
+      "notes": "Between common and rare."
+    },
+    {
+      "id": 347,
+      "source_term": "epic rarity",
+      "target_term": "ندرة ملحمية",
+      "notes": "Rarity tier."
+    },
+    {
+      "id": 348,
+      "source_term": "legendary rarity",
+      "target_term": "ندرة أسطورية",
+      "notes": "Very high rarity."
+    },
+    {
+      "id": 349,
+      "source_term": "mythic rarity",
+      "target_term": "ندرة خرافية",
+      "notes": "Can be 'ندرة أسطورية عليا' if the system needs stronger differentiation."
+    },
+    {
+      "id": 350,
+      "source_term": "hidden achievement",
+      "target_term": "إنجاز خفي",
+      "notes": "Secret achievement."
+    },
+    {
+      "id": 351,
+      "source_term": "god",
+      "target_term": "أسطوري",
+      "notes": "Generic 'god' used as an intensifier/title (e.g. 'battle god', 'sword god'). Rendered as 'أسطوري' rather than a literal religious term, per replacement policy. Use 'كائن سامٍ' instead when the source genuinely means an actual deity character."
+    },
+    {
+      "id": 352,
+      "source_term": "god-level",
+      "target_term": "بمستوى أسطوري",
+      "notes": "Describes power comparable to a god-tier being. Per replacement policy."
+    },
+    {
+      "id": 353,
+      "source_term": "god-tier",
+      "target_term": "مستوى أسطوري",
+      "notes": "Hyphenated variant of 'god tier' (id 1). Per replacement policy."
+    },
+    {
+      "id": 354,
+      "source_term": "god-grade",
+      "target_term": "رتبة أسطورية",
+      "notes": "Quality/rank classification meaning god-like grade. Per replacement policy."
+    },
+    {
+      "id": 355,
+      "source_term": "divine",
+      "target_term": "سامٍ",
+      "notes": "Standalone adjective. Per replacement policy, rendered as 'سامٍ' rather than 'إلهي' to avoid literal religious connotation, except in compounds already covered by more specific rules above."
+    },
+    {
+      "id": 356,
+      "source_term": "deity",
+      "target_term": "كائن سامٍ",
+      "notes": "A god-like being/character. Per replacement policy, rendered as 'كائن سامٍ' rather than 'إله' to avoid a direct religious term."
     }
-  ]
+  ],
+  "replacement_policy": {
+    "_comment": "Applied globally: wherever the source text uses 'god'/'divine'/'deity' as a fantasy power descriptor (not as a real-world religious reference), prefer these non-literal renderings over 'إله/إلهي' so the translation reads as fantasy terminology rather than religious language. This policy takes precedence over any conflicting older entry above.",
+    "god": "أسطوري",
+    "god-level": "بمستوى أسطوري",
+    "god-tier": "مستوى أسطوري",
+    "god-grade": "رتبة أسطورية",
+    "divine": "سامٍ",
+    "deity": "كائن سامٍ"
+  }
 }

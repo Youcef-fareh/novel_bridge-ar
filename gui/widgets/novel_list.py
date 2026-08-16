@@ -78,6 +78,20 @@ class NovelListWidget(QWidget):
         menu.addAction(delete_action)
         menu.exec(self.list_widget.mapToGlobal(pos))
 
+    def get_selected_novel_id(self) -> Optional[int]:
+        item = self.list_widget.currentItem()
+        if item:
+            return item.data(Qt.ItemDataRole.UserRole)
+        return None
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            novel_id = self.get_selected_novel_id()
+            if novel_id:
+                self.novel_deleted.emit(novel_id)
+                return
+        super().keyPressEvent(event)
+
     def select_novel(self, novel_id: int) -> None:
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)

@@ -34,7 +34,9 @@ from backend.database import (
     get_novel, init_db, update_novel,
 )
 from backend.models import Chapter, Novel, NovelStatus
-from backend.pipeline import run_epub_job, run_scrape_job, run_translation_job
+from backend.pipeline import (
+    JobControl, run_epub_job, run_scrape_job, run_translation_job,
+)
 from gui.widgets.chapter_table import ChapterTableWidget
 from gui.widgets.glossary_editor import GlossaryEditorWidget
 from gui.widgets.novel_list import NovelListWidget
@@ -45,6 +47,7 @@ from gui.widgets.novel_list import NovelListWidget
 class WorkerSignals(QObject):
     progress   = pyqtSignal(int, int, str)   # done, total, message
     finished   = pyqtSignal(object)           # result
+    cancelled  = pyqtSignal()                 # cancelled by user
     error      = pyqtSignal(str)              # error message
 
 
@@ -63,6 +66,8 @@ class AsyncWorker(QRunnable):
         try:
             result = loop.run_until_complete(self._coro_factory())
             self.signals.finished.emit(result)
+        except asyncio.CancelledError:
+            self.signals.cancelled.emit()
         except Exception as e:
             self.signals.error.emit(str(e))
         finally:
@@ -75,12 +80,12 @@ class AddNovelDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add Novel")
-        self.setFixedSize(500, 160)
+        self.setFixedSize(540, 220)
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(16)
 
         title = QLabel("Add Novel from URL")
@@ -88,17 +93,20 @@ class AddNovelDialog(QDialog):
         layout.addWidget(title)
 
         form = QFormLayout()
+        form.setSpacing(10)
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText(
             "e.g. https://novelfire.net/book/some-novel-title"
         )
-        self.url_input.setMinimumWidth(400)
         form.addRow("Novel URL:", self.url_input)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        cancel_btn = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        if cancel_btn:
+            cancel_btn.setObjectName("btn_secondary")
         buttons.accepted.connect(self._validate)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -127,11 +135,14 @@ class AddNovelDialog(QDialog):
 class NovelDetailPanel(QWidget):
     """Right-side panel: novel info + chapter table + action buttons."""
 
+    delete_requested = pyqtSignal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._novel: Optional[Novel] = None
         self._chapters: List[Chapter] = []
         self._thread_pool = QThreadPool.globalInstance()
+        self._job_control: Optional[JobControl] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -201,7 +212,71 @@ class NovelDetailPanel(QWidget):
         self.btn_epub.clicked.connect(self._on_build_epub)
         btn_row.addWidget(self.btn_epub)
 
+        self.btn_delete_novel = QPushButton("🗑 Delete Novel")
+        self.btn_delete_novel.setObjectName("btn_danger")
+        self.btn_delete_novel.setToolTip("Delete this novel and its chapters from library")
+        self.btn_delete_novel.clicked.connect(self._on_delete_novel)
+        self.btn_delete_novel.setEnabled(False)
+        btn_row.addWidget(self.btn_delete_novel)
+
+        self.btn_pause = QPushButton("⏸ Pause")
+        self.btn_pause.setObjectName("btn_secondary")
+        self.btn_pause.setToolTip("Pause or resume the running job")
+        self.btn_pause.clicked.connect(self._on_pause_clicked)
+        self.btn_pause.setVisible(False)
+        btn_row.addWidget(self.btn_pause)
+
+        self.btn_cancel = QPushButton("⏹ Cancel")
+        self.btn_cancel.setObjectName("btn_danger")
+        self.btn_cancel.setToolTip("Stop the running job and keep completed progress")
+        self.btn_cancel.clicked.connect(self._on_cancel_clicked)
+        self.btn_cancel.setVisible(False)
+        btn_row.addWidget(self.btn_cancel)
+
         layout.addLayout(btn_row)
+
+    def _on_delete_novel(self):
+        if self._novel and self._novel.id:
+            self.delete_requested.emit(self._novel.id)
+
+    def _on_pause_clicked(self):
+        if not self._job_control:
+            return
+        if self._job_control.is_paused:
+            self._job_control.resume()
+            self.btn_pause.setText("⏸ Pause")
+            self.btn_pause.setObjectName("btn_secondary")
+            self.btn_pause.style().unpolish(self.btn_pause)
+            self.btn_pause.style().polish(self.btn_pause)
+            self.status_label.setText("▶ Resuming job…")
+        else:
+            self._job_control.pause()
+            self.btn_pause.setText("▶ Continue")
+            self.btn_pause.setObjectName("btn_success")
+            self.btn_pause.style().unpolish(self.btn_pause)
+            self.btn_pause.style().polish(self.btn_pause)
+            self.status_label.setText("⏸ Job paused. Click '▶ Continue' to resume or '⏹ Cancel' to stop.")
+
+    def _on_cancel_clicked(self):
+        if not self._job_control:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Cancel Job",
+            "Are you sure you want to stop the current job?\nChapters completed so far have been saved.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.status_label.setText("Stopping job…")
+            self.btn_cancel.setEnabled(False)
+            self.btn_pause.setEnabled(False)
+            self._job_control.cancel()
+
+    def _on_job_cancelled(self):
+        self._set_busy(False)
+        self.status_label.setText("⏹ Job stopped. Completed chapters are saved.")
+        if self._novel:
+            self.load_novel(self._novel.id)
 
     def _make_stat(self, label: str, value: str) -> QWidget:
         w = QWidget()
@@ -247,6 +322,7 @@ class NovelDetailPanel(QWidget):
         self.progress_bar.setVisible(False)
         self.btn_translate.setVisible(True)
         self.btn_translate_sel.setVisible(True)
+        self.btn_delete_novel.setEnabled(False)
 
     def load_novel(self, novel_id: int) -> None:
         self._novel = get_novel(novel_id)
@@ -254,6 +330,7 @@ class NovelDetailPanel(QWidget):
         if not self._novel:
             self.clear()
             return
+        self.btn_delete_novel.setEnabled(True)
         self.novel_title_label.setText(self._novel.title)
         meta_parts = []
         if self._novel.author:
@@ -292,8 +369,20 @@ class NovelDetailPanel(QWidget):
         self.btn_translate.setEnabled(not busy)
         self.btn_translate_sel.setEnabled(not busy)
         self.btn_epub.setEnabled(not busy)
+        self.btn_delete_novel.setEnabled(not busy and self._novel is not None)
+
+        self.btn_pause.setVisible(busy)
+        self.btn_cancel.setVisible(busy)
+        self.btn_pause.setEnabled(busy)
+        self.btn_cancel.setEnabled(busy)
         if busy:
+            self.btn_pause.setText("⏸ Pause")
+            self.btn_pause.setObjectName("btn_secondary")
+            self.btn_pause.style().unpolish(self.btn_pause)
+            self.btn_pause.style().polish(self.btn_pause)
             self.status_label.setText(message)
+        else:
+            self._job_control = None
 
     def _on_progress(self, done: int, total: int, message: str) -> None:
         if total > 0:
@@ -305,16 +394,20 @@ class NovelDetailPanel(QWidget):
         if not self._novel:
             return
         self._set_busy(True, "Starting scrape…")
+        self._job_control = JobControl()
+        job_ctrl = self._job_control
         novel_id = self._novel.id
 
         async def coro():
             return await run_scrape_job(
                 novel_id,
                 progress_cb=lambda d, t, m: self._on_progress(d, t, m),
+                job_control=job_ctrl,
             )
 
         worker = AsyncWorker(coro)
         worker.signals.finished.connect(self._on_scrape_done)
+        worker.signals.cancelled.connect(self._on_job_cancelled)
         worker.signals.error.connect(self._on_error)
         worker.signals.progress.connect(self._on_progress)
         self._thread_pool.start(worker)
@@ -329,16 +422,20 @@ class NovelDetailPanel(QWidget):
         if not self._novel:
             return
         self._set_busy(True, "Starting translation…")
+        self._job_control = JobControl()
+        job_ctrl = self._job_control
         novel_id = self._novel.id
 
         async def coro():
             return await run_translation_job(
                 novel_id,
                 progress_cb=lambda d, t, m: self._on_progress(d, t, m),
+                job_control=job_ctrl,
             )
 
         worker = AsyncWorker(coro)
         worker.signals.finished.connect(self._on_translate_done)
+        worker.signals.cancelled.connect(self._on_job_cancelled)
         worker.signals.error.connect(self._on_error)
         self._thread_pool.start(worker)
 
@@ -350,6 +447,8 @@ class NovelDetailPanel(QWidget):
             QMessageBox.information(self, "Selection", "Please select chapters to translate.")
             return
         self._set_busy(True, f"Translating {len(chapter_ids)} selected chapters…")
+        self._job_control = JobControl()
+        job_ctrl = self._job_control
         novel_id = self._novel.id
 
         async def coro():
@@ -357,10 +456,12 @@ class NovelDetailPanel(QWidget):
                 novel_id,
                 chapter_ids=chapter_ids,
                 progress_cb=lambda d, t, m: self._on_progress(d, t, m),
+                job_control=job_ctrl,
             )
 
         worker = AsyncWorker(coro)
         worker.signals.finished.connect(self._on_translate_done)
+        worker.signals.cancelled.connect(self._on_job_cancelled)
         worker.signals.error.connect(self._on_error)
         self._thread_pool.start(worker)
 
@@ -489,16 +590,27 @@ class MainWindow(QMainWindow):
         self.novel_list.novel_deleted.connect(self._on_novel_deleted)
         left_layout.addWidget(self.novel_list)
 
+        sidebar_btn_row = QHBoxLayout()
+        sidebar_btn_row.setSpacing(6)
+
+        self.btn_delete = QPushButton("🗑 Delete")
+        self.btn_delete.setObjectName("btn_danger")
+        self.btn_delete.setToolTip("Delete selected novel from library")
+        self.btn_delete.clicked.connect(self._on_sidebar_delete)
+        sidebar_btn_row.addWidget(self.btn_delete)
+
         self.btn_refresh = QPushButton("↻ Refresh")
         self.btn_refresh.setObjectName("btn_secondary")
-        self.btn_refresh.setStyleSheet("margin-top: 4px;")
         self.btn_refresh.clicked.connect(self._refresh_novels)
-        left_layout.addWidget(self.btn_refresh)
+        sidebar_btn_row.addWidget(self.btn_refresh)
+
+        left_layout.addLayout(sidebar_btn_row)
 
         splitter.addWidget(left_panel)
 
         # Right: novel detail
         self.detail_panel = NovelDetailPanel()
+        self.detail_panel.delete_requested.connect(self._on_novel_deleted)
         splitter.addWidget(self.detail_panel)
         splitter.setSizes([240, 860])
         lib_layout.addWidget(splitter)
@@ -583,6 +695,10 @@ class MainWindow(QMainWindow):
         add_action.triggered.connect(self._on_add_novel)
         file_menu.addAction(add_action)
 
+        delete_action = QAction("Delete Selected Novel", self)
+        delete_action.triggered.connect(self._on_sidebar_delete)
+        file_menu.addAction(delete_action)
+
         file_menu.addSeparator()
 
         quit_action = QAction("Quit", self)
@@ -593,6 +709,15 @@ class MainWindow(QMainWindow):
         about_action = QAction("About NovelBridge", self)
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
+
+    def _on_sidebar_delete(self) -> None:
+        novel_id = self.novel_list.get_selected_novel_id()
+        if not novel_id and self.detail_panel._novel:
+            novel_id = self.detail_panel._novel.id
+        if novel_id:
+            self._on_novel_deleted(novel_id)
+        else:
+            QMessageBox.information(self, "Delete Novel", "Please select a novel from the library first.")
 
     def _refresh_novels(self) -> None:
         novels = get_all_novels()

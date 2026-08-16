@@ -32,28 +32,57 @@ _engine = create_engine(
 
 
 def init_db() -> None:
-    """Create all tables and seed glossary from config file."""
+    """Create all tables and seed/sync glossary from config file."""
     SQLModel.metadata.create_all(_engine)
-    _seed_glossary_from_config()
+    sync_glossary_from_config(overwrite=False)
 
 
-def _seed_glossary_from_config() -> None:
-    """Load default glossary rules from config/glossary.json if DB is empty."""
+def sync_glossary_from_config(overwrite: bool = False) -> int:
+    """
+    Sync glossary rules from config/glossary.json into the database.
+    Inserts missing rules, and if overwrite=True, updates existing ones.
+    Returns the total number of rules processed.
+    """
     config_path = Path("config/glossary.json")
     if not config_path.exists():
-        return
-    with Session(_engine) as session:
-        existing = session.exec(select(GlossaryRule)).first()
-        if existing:
-            return  # already seeded
+        return 0
+    try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
-        for rule in data.get("rules", []):
-            session.add(GlossaryRule(
-                source_term=rule["source_term"],
-                target_term=rule["target_term"],
-                notes=rule.get("notes"),
-            ))
+    except Exception:
+        return 0
+
+    rules_data = data.get("rules", [])
+    if not rules_data:
+        return 0
+
+    synced_count = 0
+    with Session(_engine) as session:
+        existing_rules = {r.source_term.strip().lower(): r for r in session.exec(select(GlossaryRule)).all()}
+        for rule in rules_data:
+            st = rule.get("source_term", "").strip()
+            tt = rule.get("target_term", "").strip()
+            notes = rule.get("notes", "")
+            if not st or not tt:
+                continue
+            key = st.lower()
+            if key in existing_rules:
+                if overwrite:
+                    existing_rules[key].source_term = st
+                    existing_rules[key].target_term = tt
+                    existing_rules[key].notes = notes
+                    session.add(existing_rules[key])
+                    synced_count += 1
+            else:
+                new_rule = GlossaryRule(
+                    source_term=st,
+                    target_term=tt,
+                    notes=notes,
+                )
+                session.add(new_rule)
+                existing_rules[key] = new_rule
+                synced_count += 1
         session.commit()
+    return synced_count
 
 
 @contextmanager

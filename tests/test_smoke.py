@@ -142,3 +142,35 @@ def test_native_arabic_epub_builder(tmp_path):
     assert output.exists()
     assert output.suffix == ".epub"
     assert output.stat().st_size > 100
+
+
+# ── Test: JobControl pause, resume, cancel ────────────────────────────────────
+@pytest.mark.asyncio
+async def test_job_control():
+    import asyncio
+    from backend.pipeline import JobControl
+
+    jc = JobControl()
+    assert not jc.is_paused
+    assert not jc.is_cancelled
+
+    # Check non-paused does not block
+    await jc.check()
+
+    # Test pause and resume
+    jc.pause()
+    assert jc.is_paused
+
+    async def unpause_soon():
+        await asyncio.sleep(0.1)
+        jc.resume()
+
+    asyncio.create_task(unpause_soon())
+    await jc.check()  # should unblock after resume
+    assert not jc.is_paused
+
+    # Test cancel
+    jc.cancel()
+    assert jc.is_cancelled
+    with pytest.raises(asyncio.CancelledError):
+        await jc.check()

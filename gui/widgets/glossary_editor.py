@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 
 from backend.database import (
     add_glossary_rule, delete_glossary_rule, get_all_glossary_rules,
+    sync_glossary_from_config,
 )
 from backend.models import GlossaryRule
 
@@ -24,13 +25,13 @@ class AddRuleDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add Glossary Rule")
-        self.setFixedSize(420, 220)
+        self.setFixedSize(480, 290)
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setContentsMargins(24, 20, 24, 20)
 
         title = QLabel("Add Translation Rule")
         title.setStyleSheet("font-size: 15px; font-weight: 700; color: #ffffff;")
@@ -56,6 +57,9 @@ class AddRuleDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        cancel_btn = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        if cancel_btn:
+            cancel_btn.setObjectName("btn_secondary")
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -98,6 +102,12 @@ class GlossaryEditorWidget(QWidget):
         header_row.addWidget(title)
         header_row.addStretch()
 
+        self.btn_sync = QPushButton("🔄 Sync from JSON")
+        self.btn_sync.setObjectName("btn_secondary")
+        self.btn_sync.setToolTip("Reload and update glossary rules from config/glossary.json")
+        self.btn_sync.clicked.connect(self._on_sync)
+        header_row.addWidget(self.btn_sync)
+
         self.btn_add = QPushButton("＋ Add Rule")
         self.btn_add.setObjectName("btn_success")
         self.btn_add.clicked.connect(self._on_add)
@@ -138,6 +148,14 @@ class GlossaryEditorWidget(QWidget):
             arabic.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 2, arabic)
             self.table.setItem(row, 3, QTableWidgetItem(rule.notes or ""))
+
+    def _on_sync(self) -> None:
+        count = sync_glossary_from_config(overwrite=True)
+        self.refresh()
+        QMessageBox.information(
+            self, "Glossary Synced",
+            f"Successfully synced {count} rules from config/glossary.json.\nTotal active rules: {len(self._rules)}"
+        )
 
     def _on_add(self) -> None:
         dialog = AddRuleDialog(self)

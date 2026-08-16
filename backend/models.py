@@ -36,6 +36,7 @@ class JobType(str, Enum):
 class JobStatus(str, Enum):
     queued     = "queued"
     running    = "running"
+    paused     = "paused"
     completed  = "completed"
     failed     = "failed"
     cancelled  = "cancelled"

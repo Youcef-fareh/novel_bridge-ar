@@ -53,8 +53,51 @@ def _pick_provider():
     )
 
 
-# ── Progress callback type ─────────────────────────────────────────────────────
+# ── Progress callback type & JobControl ────────────────────────────────────────
 ProgressCallback = Callable[[int, int, str], None]  # (done, total, message)
+
+
+class JobControl:
+    """
+    Thread-safe controller for pausing, resuming, and cancelling background jobs.
+    """
+    def __init__(self):
+        self._paused = False
+        self._cancelled = False
+
+    def pause(self) -> None:
+        self._paused = True
+
+    def resume(self) -> None:
+        self._paused = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+        self._paused = False
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancelled
+
+    async def check(self, on_paused: Optional[Callable[[], None]] = None) -> None:
+        """
+        Check cancellation and pause state.
+        If cancelled, raises asyncio.CancelledError.
+        If paused, waits until resume() or cancel() is called.
+        """
+        if self._cancelled:
+            raise asyncio.CancelledError("Job was cancelled by the user.")
+        if self._paused:
+            if on_paused:
+                on_paused()
+            while self._paused and not self._cancelled:
+                await asyncio.sleep(0.25)
+            if self._cancelled:
+                raise asyncio.CancelledError("Job was cancelled by the user.")
 
 
 # ── Scrape pipeline ────────────────────────────────────────────────────────────
@@ -62,6 +105,7 @@ ProgressCallback = Callable[[int, int, str], None]  # (done, total, message)
 async def run_scrape_job(
     novel_id: int,
     progress_cb: Optional[ProgressCallback] = None,
+    job_control: Optional[JobControl] = None,
 ) -> Job:
     """
     Scrape novel metadata + all chapters, save to SQLite.
@@ -78,7 +122,12 @@ async def run_scrape_job(
     job = create_job(novel_id, JobType.scrape)
     update_job(job.id, status=JobStatus.running)
 
+    done = 0
+    total = 1
     try:
+        if job_control:
+            await job_control.check()
+
         # Step 1: Fetch metadata
         if progress_cb:
             progress_cb(0, 1, "Fetching novel metadata…")
@@ -91,6 +140,9 @@ async def run_scrape_job(
             description=meta.description,
             status=NovelStatus.scraping,
         )
+
+        if job_control:
+            await job_control.check()
 
         # Step 2: Fetch chapter list
         if progress_cb:
@@ -107,8 +159,10 @@ async def run_scrape_job(
             upsert_chapter(novel_id, ref.index, ref.title, ref.source_url)
 
         # Step 3: Scrape each pending chapter
-        done = 0
         for ref in chapter_refs:
+            if job_control:
+                await job_control.check()
+
             chapters = get_chapters(novel_id)
             ch = next((c for c in chapters if c.index == ref.index), None)
             if ch and ch.status not in (ChapterStatus.pending, ChapterStatus.failed):
@@ -117,8 +171,13 @@ async def run_scrape_job(
 
             async with _get_semaphore():
                 try:
+                    if job_control:
+                        await job_control.check()
                     text = await adapter.get_chapter_text(ref.source_url)
-                    update_chapter(ch.id, raw_text=text, status=ChapterStatus.scraped)
+                    if ch:
+                        update_chapter(ch.id, raw_text=text, status=ChapterStatus.scraped)
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
                     logger.warning(f"Failed to scrape chapter {ref.index}: {e}")
                     if ch:
@@ -136,6 +195,10 @@ async def run_scrape_job(
             progress_cb(total, total, "Scraping complete!")
         return get_job_obj(job.id)
 
+    except asyncio.CancelledError:
+        logger.info(f"Scrape job for novel {novel_id} was cancelled.")
+        update_job(job.id, status=JobStatus.cancelled, done_items=done)
+        raise
     except Exception as e:
         logger.error(f"Scrape job failed: {e}", exc_info=True)
         update_job(job.id, status=JobStatus.failed, error_message=str(e))
@@ -148,6 +211,7 @@ async def run_translation_job(
     novel_id: int,
     chapter_ids: Optional[List[int]] = None,
     progress_cb: Optional[ProgressCallback] = None,
+    job_control: Optional[JobControl] = None,
 ) -> Job:
     """
     Translate scraped chapters.
@@ -176,11 +240,18 @@ async def run_translation_job(
         progress_cb(0, total, f"Translating {total} chapters with {provider.provider_name}…")
 
     async def translate_one(chapter: Chapter) -> None:
+        if job_control:
+            await job_control.check()
         async with _get_semaphore():
             try:
+                if job_control:
+                    await job_control.check()
                 update_chapter(chapter.id, status=ChapterStatus.translating)
                 translated = await provider.translate_chapter(chapter.raw_text or "", glossary)
                 update_chapter(chapter.id, translated_text=translated, status=ChapterStatus.translated)
+            except asyncio.CancelledError:
+                update_chapter(chapter.id, status=ChapterStatus.scraped)
+                raise
             except Exception as e:
                 logger.warning(f"Failed to translate chapter {chapter.index}: {e}")
                 update_chapter(chapter.id, status=ChapterStatus.failed)
@@ -194,23 +265,46 @@ async def run_translation_job(
                     except Exception as e2:
                         logger.error(f"Groq fallback also failed for chapter {chapter.index}: {e2}")
 
+    done = 0
     try:
-        done = 0
-        # Process in batches respecting the semaphore
-        tasks = [translate_one(ch) for ch in pending]
-        for coro in asyncio.as_completed(tasks):
-            await coro
-            done += 1
-            progress = int(done / total * 100)
-            update_job(job.id, done_items=done, progress=progress)
-            if progress_cb:
-                progress_cb(done, total, f"Translated {done}/{total} chapters")
+        queue: asyncio.Queue[Chapter] = asyncio.Queue()
+        for ch in pending:
+            queue.put_nowait(ch)
 
-        update_job(job.id, status=JobStatus.completed, progress=100)
+        async def worker():
+            nonlocal done
+            while True:
+                if job_control:
+                    await job_control.check()
+                try:
+                    chapter = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+
+                try:
+                    await translate_one(chapter)
+                finally:
+                    queue.task_done()
+
+                done += 1
+                progress = int(done / total * 100)
+                update_job(job.id, done_items=done, progress=progress)
+                if progress_cb:
+                    progress_cb(done, total, f"Translated {done}/{total} chapters: {chapter.title[:40]}")
+
+        num_workers = min(_MAX_CONCURRENT, total)
+        worker_tasks = [asyncio.create_task(worker()) for _ in range(num_workers)]
+        await asyncio.gather(*worker_tasks)
+
+        update_job(job.id, status=JobStatus.completed, progress=100, done_items=total)
         if progress_cb:
             progress_cb(total, total, "Translation complete!")
         return get_job_obj(job.id)
 
+    except asyncio.CancelledError:
+        logger.info(f"Translation job for novel {novel_id} was cancelled.")
+        update_job(job.id, status=JobStatus.cancelled, done_items=done)
+        raise
     except Exception as e:
         logger.error(f"Translation job failed: {e}", exc_info=True)
         update_job(job.id, status=JobStatus.failed, error_message=str(e))
