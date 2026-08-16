@@ -37,6 +37,7 @@ from backend.models import Chapter, Novel, NovelStatus
 from backend.pipeline import (
     JobControl, run_epub_job, run_scrape_job, run_translation_job,
 )
+from gui.widgets.api_keys import ApiKeysWidget
 from gui.widgets.chapter_table import ChapterTableWidget
 from gui.widgets.glossary_editor import GlossaryEditorWidget
 from gui.widgets.novel_list import NovelListWidget
@@ -516,9 +517,24 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("NovelBridge — Arabic Web Novel Translator")
         self.setMinimumSize(1100, 700)
         self.resize(1280, 780)
+        self._apply_icon()
         self._setup_ui()
         self._setup_menu()
         self._refresh_novels()
+
+    @staticmethod
+    def _resolve_icon() -> Path:
+        """Find icon.ico whether running from source or a PyInstaller bundle."""
+        import sys as _sys
+        if getattr(_sys, "frozen", False):
+            # PyInstaller extracts files to sys._MEIPASS
+            return Path(_sys._MEIPASS) / "icon.ico"
+        return Path(__file__).parent.parent / "icon.ico"
+
+    def _apply_icon(self) -> None:
+        icon_path = self._resolve_icon()
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
     def _setup_ui(self):
         central = QWidget()
@@ -625,9 +641,9 @@ class MainWindow(QMainWindow):
         g_layout.addWidget(self.glossary_editor)
         self.tabs.addTab(glossary_tab, "📖 Glossary")
 
-        # Tab 3: API / Settings
+        # Tab 3: API Key Management / Settings
         settings_tab = self._build_settings_tab()
-        self.tabs.addTab(settings_tab, "⚙️ Settings")
+        self.tabs.addTab(settings_tab, "🔑 API Keys")
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -635,56 +651,42 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Ready — Add a novel URL to get started.")
 
     def _build_settings_tab(self) -> QWidget:
+        """
+        Settings tab — contains the full ApiKeysWidget plus
+        a collapsed info section for concurrency and supported sites.
+        """
         w = QWidget()
         layout = QVBoxLayout(w)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        heading = QLabel("⚙️ Settings")
-        heading.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
-        layout.addWidget(heading)
+        # ── API Key Management (takes the bulk of the space) ─────────────────
+        self.api_keys_widget = ApiKeysWidget()
+        layout.addWidget(self.api_keys_widget, stretch=1)
 
-        api_group = QGroupBox("Translation API Keys")
-        api_layout = QFormLayout(api_group)
-        api_layout.setSpacing(10)
-
-        self.gemini_key_input = QLineEdit()
-        self.gemini_key_input.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
-        self.gemini_key_input.setPlaceholderText("Set in .env file: GEMINI_API_KEY=...")
-        api_layout.addRow("Gemini API Key:", self.gemini_key_input)
-
-        self.groq_key_input = QLineEdit()
-        self.groq_key_input.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
-        self.groq_key_input.setPlaceholderText("Set in .env file: GROQ_API_KEY=...")
-        api_layout.addRow("Groq API Key (fallback):", self.groq_key_input)
-
-        info = QLabel(
-            "API keys are loaded from the <b>.env</b> file in the project root. "
-            "Edit that file directly for persistent settings."
+        # ── Collapsed info section ────────────────────────────────────────────
+        info_bar = QWidget()
+        info_bar.setStyleSheet(
+            "background: #141720; border-top: 1px solid #2d3748;"
         )
-        info.setStyleSheet("color: #718096; font-size: 12px;")
-        info.setWordWrap(True)
-        api_layout.addRow(info)
+        info_layout = QHBoxLayout(info_bar)
+        info_layout.setContentsMargins(20, 8, 20, 8)
+        info_layout.setSpacing(24)
 
-        layout.addWidget(api_group)
+        conc_lbl = QLabel(
+            f"⚡ Max concurrent jobs: "
+            f"<b>{os.getenv('MAX_CONCURRENT_JOBS', '3')}</b>"
+        )
+        conc_lbl.setStyleSheet("color: #718096; font-size: 11px;")
+        info_layout.addWidget(conc_lbl)
 
-        concurrency_group = QGroupBox("Concurrency")
-        c_layout = QFormLayout(concurrency_group)
-        self.concurrency_label = QLabel(f"Max concurrent jobs: {os.getenv('MAX_CONCURRENT_JOBS', '3')}")
-        self.concurrency_label.setStyleSheet("color: #a0aec0;")
-        c_layout.addRow(self.concurrency_label)
-        layout.addWidget(concurrency_group)
+        sites = "  ·  ".join(s["site_id"] for s in AdapterRegistry.list_all())
+        sites_lbl = QLabel(f"🌐 Sites: <b>{sites}</b>")
+        sites_lbl.setStyleSheet("color: #718096; font-size: 11px;")
+        info_layout.addWidget(sites_lbl)
+        info_layout.addStretch()
 
-        sites_group = QGroupBox("Supported Sites")
-        s_layout = QVBoxLayout(sites_group)
-        for site in AdapterRegistry.list_all():
-            lbl = QLabel(f"• {site['site_id']}  ({site['class']})")
-            lbl.setStyleSheet("color: #a0aec0; font-family: monospace;")
-            s_layout.addWidget(lbl)
-        layout.addWidget(sites_group)
-
-        layout.addStretch()
+        layout.addWidget(info_bar)
         return w
 
     def _setup_menu(self):
@@ -809,6 +811,11 @@ def run_app() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("NovelBridge")
     app.setOrganizationName("NovelBridge")
+
+    # Set app-level icon (taskbar, alt-tab, etc.)
+    _icon_path = Path(__file__).parent.parent / "icon.ico"
+    if _icon_path.exists():
+        app.setWindowIcon(QIcon(str(_icon_path)))
 
     # Apply dark stylesheet
     stylesheet = load_stylesheet()

@@ -395,3 +395,34 @@ QCheckBox::indicator:checked {
     background: #6c63ff;
     border-color: #6c63ff;
 }
+
+/* ── API Key icon buttons (show/hide, copy, clear) ──────────────────────── */
+QPushButton#btn_icon {
+    background: #252a3a;
+    color: #a0aec0;
+    border: 1px solid #2d3748;
+    border-radius: 6px;
+    padding: 0px;
+    font-size: 14px;
+}
+
+QPushButton#btn_icon:hover {
+    background: #2d3352;
+    border-color: #6c63ff;
+    color: #ffffff;
+}
+
+QPushButton#btn_icon:pressed {
+    background: #6c63ff;
+    color: #ffffff;
+}
+
+/* ── API Keys scroll container background ───────────────────────────────── */
+QScrollArea {
+    background: transparent;
+}
+
+#rowsContainer {
+    background: #0f1117;
+}
+

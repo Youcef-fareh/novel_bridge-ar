@@ -1,0 +1,73 @@
+name: Build & Release Installer
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggers on any git tag that looks like a version, e.g. v1.0.0 or v2.3.1
+# Push a tag to start a release:
+#   git tag v1.0.0 && git push origin v1.0.0
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write   # needed to create/upload GitHub Release assets
+
+jobs:
+  build-and-release:
+    name: Build installer on Windows
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. Checkout source ────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ──────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. Install Python dependencies ───────────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── 4. Build the executable with PyInstaller ─────────────────────────
+      - name: Build executable (PyInstaller)
+        run: pyinstaller novel_bridge.spec --noconfirm
+
+      # ── 5. Install Inno Setup (via Chocolatey) ────────────────────────────
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      # ── 6. Compile the installer with Inno Setup ─────────────────────────
+      - name: Compile installer (Inno Setup)
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc /DMyAppVersion="${{ github.ref_name }}" installer\setup.iss
+        shell: pwsh
+
+      # ── 7. Create GitHub Release and upload installer ─────────────────────
+      - name: Create GitHub Release & upload installer
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "NovelBridge AR ${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: installer\Output\NovelBridgeAR_Setup.exe
+          body: |
+            ## NovelBridge AR ${{ github.ref_name }}
+
+            ### Installation
+            1. Download **NovelBridgeAR_Setup.exe** below
+            2. Run the installer and follow the wizard
+            3. Launch **NovelBridge AR** from the Start Menu or Desktop shortcut
+
+            ### What's new
+            See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes in this release.
