@@ -1,0 +1,35 @@
+{
+  "_comment": "Add glossary rules here. source_term is matched case-insensitively. target_term is the Arabic replacement.",
+  "rules": [
+    {
+      "id": 1,
+      "source_term": "god tier",
+      "target_term": "مستوى مكرم",
+      "notes": "Example from spec"
+    },
+    {
+      "id": 2,
+      "source_term": "cultivation",
+      "target_term": "تنمية الطاقة",
+      "notes": "Common xianxia term"
+    },
+    {
+      "id": 3,
+      "source_term": "qi",
+      "target_term": "طاقة الـ تشي",
+      "notes": "Energy force in cultivation novels"
+    },
+    {
+      "id": 4,
+      "source_term": "sect",
+      "target_term": "طائفة",
+      "notes": "Cultivation sects/factions"
+    },
+    {
+      "id": 5,
+      "source_term": "profound",
+      "target_term": "عميق",
+      "notes": "Often used for martial arts"
+    }
+  ]
+}

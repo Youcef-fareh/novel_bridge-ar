@@ -1,0 +1,63 @@
+# Python virtual environment
+env/
+venv/
+ENV/
+.venv
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# pytest
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.log
+.env
+.env.local
+novel-translator-mvp-spec.md
+
+# Generated outputs
+output/
+
+# HTML scraping examples
+data/example for html to some wbsite to help in scraping/
+
+# Generated outputs
+output/
+
+# HTML scraping examples
+data/
+example for html to some wbsite to help in scraping

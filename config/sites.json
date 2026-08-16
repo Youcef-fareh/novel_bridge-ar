@@ -1,0 +1,66 @@
+{
+  "novelfire": {
+    "base_url": "https://novelfire.net",
+    "selectors": {
+      "novel_title": "h1.novel-title, .book-name h1, .novel-info h1",
+      "novel_author": ".author-content a, .novel-author .author-name",
+      "novel_cover": ".book-img img, .novel-cover img",
+      "novel_description": ".summary__content, .novel-description",
+      "chapter_list": ".wp-manga-chapter a, .chapter-item a, #chapterlist li a",
+      "chapter_title": ".chapter-title, h2.active, h1.chapter-title",
+      "chapter_text": "#chapter-container, .chapter-content, .text-left"
+    },
+    "request_delay_min": 0.8,
+    "request_delay_max": 2.5,
+    "use_curl_cffi": true,
+    "respect_robots_txt": false
+  },
+  "wtrlab": {
+    "base_url": "https://wtr-lab.com",
+    "selectors": {
+      "novel_title": "h1.story-title, .story-name",
+      "novel_author": ".story-author a",
+      "novel_cover": ".story-cover img, .story-image img",
+      "novel_description": ".story-desc, .story-description",
+      "chapter_list": ".chapter-list a, .chapter-item a",
+      "chapter_title": "h1.chapter-title, .chapter-name",
+      "chapter_text": ".chapter-content, .story-part, #chapter-container"
+    },
+    "request_delay_min": 1.0,
+    "request_delay_max": 3.0,
+    "use_curl_cffi": true,
+    "respect_robots_txt": false
+  },
+  "novelphoenix": {
+    "base_url": "https://novelphoenix.com",
+    "selectors": {
+      "novel_title": "h1",
+      "novel_author": ".author, .novel-info .author",
+      "novel_cover": ".cover img, .novel-info img",
+      "novel_description": ".summary, .description, .content",
+      "chapter_list": ".chapter-list li a, .chapter-list a",
+      "chapter_title": "h1, .chapter-title",
+      "chapter_text": "#chapter-container, .chapter-content"
+    },
+    "request_delay_min": 0.8,
+    "request_delay_max": 2.5,
+    "use_curl_cffi": true,
+    "respect_robots_txt": false
+  },
+  "galaxynovels": {
+    "base_url": "https://galaxynovels.com",
+    "selectors": {
+      "novel_title": "h1, .wor-single-title",
+      "novel_author": ".author, .wor-author a",
+      "novel_cover": ".wor-single-thumb img, .wor-single-cover img, .wp-post-image",
+      "novel_description": ".wor-single-summary__text, .description",
+      "chapter_list": ".wor-novel-chapters-list a, .wor-novel-chapter-item a",
+      "chapter_title": "h1, .wor-chapter-title",
+      "chapter_text": ".wor-chapter-body, .chapter-content, #chapter-container, article"
+    },
+    "request_delay_min": 0.8,
+    "request_delay_max": 2.5,
+    "use_curl_cffi": true,
+    "respect_robots_txt": false
+  }
+}
