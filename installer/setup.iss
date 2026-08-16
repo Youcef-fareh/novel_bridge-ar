@@ -46,7 +46,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile={#MyAppIcon}
 
 ; ── Minimum OS requirement ─────────────────────────────────────────────────
-MinVersion=10.0                                ; Windows 10+
+MinVersion=10.0.0                              ; Windows 10+
 
 ; ── Privileges ────────────────────────────────────────────────────────────
 PrivilegesRequired=lowest                      ; installs per-user by default
