@@ -39,14 +39,55 @@ from PyQt6.QtWidgets import (
 
 ENV_FILE = Path(__file__).parent.parent.parent / ".env"
 
-# Ordered list of all API-key entries we manage.
-# Each tuple: (env_var_name, display_label, hint_url, is_secret)
 API_KEY_DEFS: List[tuple] = [
     (
+        "TOKENROUTER_API_KEY",
+        "TokenRouter API Key  (DeepSeek / Qwen)",
+        "https://tokenrouter.com",
+        True,
+    ),
+    (
+        "TOKENROUTER_MODEL",
+        "TokenRouter Model",
+        "e.g. deepseek/deepseek-v4-pro-0813-free or qwen/qwen3.8-max-free",
+        False,
+    ),
+    (
+        "TOKENROUTER_BASE_URL",
+        "TokenRouter Base URL  (OpenAI-compatible)",
+        "https://api.tokenrouter.com/v1",
+        False,
+    ),
+    (
+        "ORCAROUTER_API_KEY",
+        "OrcaRouter API Key  (DeepSeek / Free)",
+        "https://orcarouter.ai",
+        True,
+    ),
+    (
+        "ORCAROUTER_MODEL",
+        "OrcaRouter Model",
+        "e.g. deepseek/deepseek-v4-flash-free or orcarouter/free",
+        False,
+    ),
+    (
+        "ORCAROUTER_BASE_URL",
+        "OrcaRouter Base URL  (OpenAI-compatible)",
+        "https://api.orcarouter.ai/v1",
+        False,
+    ),
+    (
         "GEMINI_API_KEY",
+
         "Google Gemini API Key",
         "https://aistudio.google.com/app/apikey",
         True,
+    ),
+    (
+        "GEMINI_MODEL",
+        "Gemini Model",
+        "e.g. gemini-2.5-flash",
+        False,
     ),
     (
         "GROQ_API_KEY",
@@ -55,18 +96,14 @@ API_KEY_DEFS: List[tuple] = [
         True,
     ),
     (
-        "GEMINI_MODEL",
-        "Gemini Model",
-        "e.g. gemini-1.5-flash",
-        False,
-    ),
-    (
         "GROQ_MODEL",
         "Groq Model",
-        "e.g. llama-3.3-70b-versatile",
+        "e.g. openai/gpt-oss-20b or qwen/qwen3.6-27b",
         False,
     ),
 ]
+
+
 
 
 def _read_env_file() -> Dict[str, str]:

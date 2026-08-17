@@ -174,3 +174,124 @@ async def test_job_control():
     assert jc.is_cancelled
     with pytest.raises(asyncio.CancelledError):
         await jc.check()
+
+
+# ── Test: TokenRouter Provider & Provider Factory ─────────────────────────────
+def test_tokenrouter_provider(monkeypatch):
+    from backend.translation import TokenRouterProvider, get_provider, ProviderFailureError
+
+    # Test unavailable without key
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "")
+    tp = TokenRouterProvider()
+    assert not tp.is_available()
+
+    # Test available with valid key
+    tp_keyed = TokenRouterProvider(api_key="sk-test-tokenrouter-valid-key-12345")
+    assert tp_keyed.is_available()
+
+    # Test factory instantiation
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-tokenrouter-test-key-54321")
+    prov = get_provider("tokenrouter", model="deepseek/deepseek-v4-pro-0813-free")
+    assert prov.provider_name == "tokenrouter"
+    assert prov._model == "deepseek/deepseek-v4-pro-0813-free"
+
+
+@pytest.mark.asyncio
+async def test_tokenrouter_translation_mock(monkeypatch):
+    from backend.models import GlossaryRule
+    from backend.translation.tokenrouter_provider import TokenRouterProvider
+
+    tp = TokenRouterProvider(api_key="sk-mock-key-tokenrouter")
+    
+    # Mock internal _call_api
+    def mock_call(system_prompt, text, model):
+        assert "deepseek" in model or "qwen" in model
+        return "هذا نص تجريبي مترجم."
+
+    monkeypatch.setattr(tp, "_call_api", mock_call)
+    glossary = [GlossaryRule(source_term="test", target_term="تجريبي")]
+    result = await tp.translate_chapter("This is a test chapter.", glossary, model="deepseek/deepseek-v4-pro-0813-free")
+    assert "هذا نص تجريبي مترجم." in result
+
+
+# ── Test: Provider Failure Error and Suggestion ────────────────────────────────
+def test_provider_failure_error():
+    from backend.translation import ProviderFailureError
+
+    err = ProviderFailureError("tokenrouter", "Rate limit exceeded (429)")
+    assert "tokenrouter" in str(err)
+    assert "Rate limit exceeded" in str(err)
+    assert "API Keys" in str(err)
+    assert "switch" in str(err).lower()
+
+
+@pytest.mark.asyncio
+async def test_translation_pipeline_failure_stops_and_suggests(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from backend.models import Novel, Chapter, NovelStatus, ChapterStatus, JobStatus
+    from backend.pipeline import run_translation_job
+    from backend.translation import ProviderFailureError, TokenRouterProvider
+    import backend.database as db_module
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "pipeline_test.db"))
+    import importlib
+    importlib.reload(db_module)
+    db_module.init_db()
+
+    novel = db_module.create_novel(title="Fail Test Novel", source_url="http://test.com/fail", source_site="novelfire")
+    db_module.upsert_chapter(novel.id, 0, "Ch 1", "http://test.com/1")
+    db_module.upsert_chapter(novel.id, 1, "Ch 2", "http://test.com/2")
+    db_module.upsert_chapter(novel.id, 2, "Ch 3", "http://test.com/3")
+    for c in db_module.get_chapters(novel.id):
+        db_module.update_chapter(c.id, raw_text="Hello world", status=ChapterStatus.scraped)
+
+    # Monkeypatch TokenRouterProvider to always raise an API error
+    async def failing_translate(self, text, glossary, model=None):
+        raise RuntimeError("TokenRouter API 429 Too Many Requests")
+
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test-valid-key")
+    monkeypatch.setattr(TokenRouterProvider, "translate_chapter", failing_translate)
+
+    with pytest.raises(ProviderFailureError) as exc_info:
+        await run_translation_job(novel.id, provider_name="tokenrouter")
+
+    assert "TokenRouter" in str(exc_info.value) or "tokenrouter" in str(exc_info.value)
+    assert "Suggestion" in str(exc_info.value) or "switch" in str(exc_info.value).lower()
+
+
+# ── Test: OrcaRouter Provider ──────────────────────────────────────────────────
+def test_orcarouter_provider(monkeypatch):
+    from backend.translation import OrcaRouterProvider, get_provider
+
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "")
+    op = OrcaRouterProvider()
+    assert not op.is_available()
+
+    op_keyed = OrcaRouterProvider(api_key="sk-test-orca-key-12345")
+    assert op_keyed.is_available()
+
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-key-99999")
+    prov = get_provider("orcarouter", model="deepseek/deepseek-v4-flash-free")
+    assert prov.provider_name == "orcarouter"
+    assert prov._model == "deepseek/deepseek-v4-flash-free"
+
+
+@pytest.mark.asyncio
+async def test_orcarouter_translation_mock(monkeypatch):
+    from backend.models import GlossaryRule
+    from backend.translation.orcarouter_provider import OrcaRouterProvider
+
+    op = OrcaRouterProvider(api_key="sk-mock-key-orca")
+
+    def mock_call(system_prompt, text, model):
+        assert "deepseek" in model or "orcarouter" in model
+        return "هذا نص أوركا المترجم."
+
+    monkeypatch.setattr(op, "_call_api", mock_call)
+    glossary = [GlossaryRule(source_term="test", target_term="تجريبي")]
+    result = await op.translate_chapter("Test text.", glossary, model="orcarouter/free")
+    assert "هذا نص أوركا المترجم." in result
+
+
+

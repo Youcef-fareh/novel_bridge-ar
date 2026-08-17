@@ -107,6 +107,23 @@ def apply_glossary_postpass(text: str, glossary: List[GlossaryRule]) -> str:
     return text
 
 
+class ProviderFailureError(Exception):
+    """
+    Raised when a translation provider fails critically or exhausts retries.
+    Contains structured information and actionable suggestions for the user.
+    """
+    def __init__(self, provider: str, error_detail: str, suggestion: str = ""):
+        self.provider = provider
+        self.error_detail = error_detail
+        self.suggestion = (
+            suggestion
+            or f"Translation failed with provider '{provider}' ({error_detail}). "
+               f"Please consider switching to another provider (e.g., TokenRouter, Gemini, or Groq) "
+               f"or check your API key in the 'API Keys' tab."
+        )
+        super().__init__(self.suggestion)
+
+
 class TranslationProvider(ABC):
     """
     Abstract base class for translation providers.
@@ -116,7 +133,12 @@ class TranslationProvider(ABC):
     provider_name: str = ""
 
     @abstractmethod
-    async def translate_chapter(self, text: str, glossary: List[GlossaryRule]) -> str:
+    async def translate_chapter(
+        self,
+        text: str,
+        glossary: List[GlossaryRule],
+        model: Optional[str] = None,
+    ) -> str:
         """
         Translate a chapter of text, applying glossary rules.
         Returns the translated Arabic text.
@@ -126,4 +148,4 @@ class TranslationProvider(ABC):
     @abstractmethod
     def is_available(self) -> bool:
         """Return True if the provider has a valid API key configured."""
-        ...
+        ...

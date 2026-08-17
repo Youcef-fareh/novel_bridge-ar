@@ -13,13 +13,13 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import (
-    QObject, QRunnable, Qt, QThread, QThreadPool,
+    QObject, QRunnable, QSettings, Qt, QThread, QThreadPool,
     pyqtSignal, pyqtSlot,
 )
 from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
-    QApplication, QDialog, QDialogButtonBox, QFormLayout,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
+    QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QSplitter,
     QStatusBar, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -37,10 +37,16 @@ from backend.models import Chapter, Novel, NovelStatus
 from backend.pipeline import (
     JobControl, run_epub_job, run_scrape_job, run_translation_job,
 )
+from backend.translation import (
+    PROVIDER_DISPLAY_NAMES,
+    PROVIDER_MODELS,
+    ProviderFailureError,
+)
 from gui.widgets.api_keys import ApiKeysWidget
 from gui.widgets.chapter_table import ChapterTableWidget
 from gui.widgets.glossary_editor import GlossaryEditorWidget
 from gui.widgets.novel_list import NovelListWidget
+
 
 
 # ── Async worker ───────────────────────────────────────────────────────────────
@@ -137,6 +143,7 @@ class NovelDetailPanel(QWidget):
     """Right-side panel: novel info + chapter table + action buttons."""
 
     delete_requested = pyqtSignal(int)
+    open_api_keys_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -145,6 +152,7 @@ class NovelDetailPanel(QWidget):
         self._thread_pool = QThreadPool.globalInstance()
         self._job_control: Optional[JobControl] = None
         self._setup_ui()
+        self._load_provider_settings()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -178,6 +186,54 @@ class NovelDetailPanel(QWidget):
         # Chapter table
         self.chapter_table = ChapterTableWidget()
         layout.addWidget(self.chapter_table, stretch=1)
+
+        # Provider & Model Settings Row
+        self.provider_card = QFrame()
+        self.provider_card.setObjectName("providerCard")
+        self.provider_card.setStyleSheet("""
+            #providerCard {
+                background: #151824;
+                border: 1px solid #2d3748;
+                border-radius: 8px;
+                padding: 4px 8px;
+            }
+        """)
+        prov_layout = QHBoxLayout(self.provider_card)
+        prov_layout.setContentsMargins(10, 5, 10, 5)
+        prov_layout.setSpacing(8)
+
+        prov_lbl = QLabel("🤖 Provider:")
+        prov_lbl.setStyleSheet("font-weight: 600; color: #e2e8f0; font-size: 12px;")
+        prov_layout.addWidget(prov_lbl)
+
+        self.combo_provider = QComboBox()
+        self.combo_provider.setObjectName("combo_provider")
+        self.combo_provider.setStyleSheet("padding: 4px 8px; font-size: 12px;")
+        for key, name in PROVIDER_DISPLAY_NAMES:
+            self.combo_provider.addItem(name, key)
+        self.combo_provider.currentIndexChanged.connect(self._on_provider_changed)
+        prov_layout.addWidget(self.combo_provider)
+
+        model_lbl = QLabel("🏷️ Model:")
+        model_lbl.setStyleSheet("font-weight: 600; color: #e2e8f0; font-size: 12px; margin-left: 4px;")
+        prov_layout.addWidget(model_lbl)
+
+        self.combo_model = QComboBox()
+        self.combo_model.setObjectName("combo_model")
+        self.combo_model.setEditable(True)
+        self.combo_model.setMinimumWidth(220)
+        self.combo_model.setStyleSheet("padding: 4px 8px; font-size: 12px;")
+        self.combo_model.currentTextChanged.connect(self._on_model_changed)
+        prov_layout.addWidget(self.combo_model, stretch=1)
+
+        self.btn_open_keys = QPushButton("🔑 API Keys")
+        self.btn_open_keys.setObjectName("btn_secondary")
+        self.btn_open_keys.setToolTip("Configure API keys and credentials")
+        self.btn_open_keys.setStyleSheet("padding: 4px 12px; font-size: 11px;")
+        self.btn_open_keys.clicked.connect(self.open_api_keys_requested.emit)
+        prov_layout.addWidget(self.btn_open_keys)
+
+        layout.addWidget(self.provider_card)
 
         # Progress bar + status
         self.progress_bar = QProgressBar()
@@ -235,6 +291,7 @@ class NovelDetailPanel(QWidget):
         btn_row.addWidget(self.btn_cancel)
 
         layout.addLayout(btn_row)
+
 
     def _on_delete_novel(self):
         if self._novel and self._novel.id:
@@ -364,6 +421,50 @@ class NovelDetailPanel(QWidget):
         self.chapter_table.set_chapters(self._chapters, is_native_arabic=is_native_ar)
         self._update_stats()
 
+    def _load_provider_settings(self) -> None:
+        settings = QSettings("NovelBridge", "Settings")
+        saved_provider = settings.value("selected_provider", "tokenrouter")
+        saved_model = settings.value("selected_model", "")
+
+        idx = self.combo_provider.findData(saved_provider)
+        if idx >= 0:
+            self.combo_provider.setCurrentIndex(idx)
+        else:
+            self.combo_provider.setCurrentIndex(0)
+
+        self._populate_models_for_current_provider(saved_model)
+
+    def _on_provider_changed(self, index: int) -> None:
+        provider_key = self.combo_provider.currentData()
+        settings = QSettings("NovelBridge", "Settings")
+        settings.setValue("selected_provider", provider_key)
+        self._populate_models_for_current_provider()
+
+    def _on_model_changed(self, text: str) -> None:
+        settings = QSettings("NovelBridge", "Settings")
+        settings.setValue("selected_model", text.strip())
+
+    def _populate_models_for_current_provider(self, custom_model: Optional[str] = None) -> None:
+        provider_key = self.combo_provider.currentData() or "tokenrouter"
+        self.combo_model.blockSignals(True)
+        self.combo_model.clear()
+
+        models = PROVIDER_MODELS.get(provider_key, [])
+        for m in models:
+            self.combo_model.addItem(m)
+
+        if custom_model:
+            self.combo_model.setEditText(custom_model)
+        elif models:
+            self.combo_model.setCurrentIndex(0)
+        self.combo_model.blockSignals(False)
+
+    def get_selected_provider(self) -> str:
+        return self.combo_provider.currentData() or "tokenrouter"
+
+    def get_selected_model(self) -> str:
+        return self.combo_model.currentText().strip()
+
     def _set_busy(self, busy: bool, message: str = "") -> None:
         self.progress_bar.setVisible(busy)
         self.btn_scrape.setEnabled(not busy)
@@ -371,6 +472,7 @@ class NovelDetailPanel(QWidget):
         self.btn_translate_sel.setEnabled(not busy)
         self.btn_epub.setEnabled(not busy)
         self.btn_delete_novel.setEnabled(not busy and self._novel is not None)
+        self.provider_card.setEnabled(not busy)
 
         self.btn_pause.setVisible(busy)
         self.btn_cancel.setVisible(busy)
@@ -426,10 +528,14 @@ class NovelDetailPanel(QWidget):
         self._job_control = JobControl()
         job_ctrl = self._job_control
         novel_id = self._novel.id
+        provider_name = self.get_selected_provider()
+        model_name = self.get_selected_model()
 
         async def coro():
             return await run_translation_job(
                 novel_id,
+                provider_name=provider_name,
+                model_name=model_name,
                 progress_cb=lambda d, t, m: self._on_progress(d, t, m),
                 job_control=job_ctrl,
             )
@@ -451,11 +557,15 @@ class NovelDetailPanel(QWidget):
         self._job_control = JobControl()
         job_ctrl = self._job_control
         novel_id = self._novel.id
+        provider_name = self.get_selected_provider()
+        model_name = self.get_selected_model()
 
         async def coro():
             return await run_translation_job(
                 novel_id,
                 chapter_ids=chapter_ids,
+                provider_name=provider_name,
+                model_name=model_name,
                 progress_cb=lambda d, t, m: self._on_progress(d, t, m),
                 job_control=job_ctrl,
             )
@@ -506,7 +616,39 @@ class NovelDetailPanel(QWidget):
     def _on_error(self, error_msg: str) -> None:
         self._set_busy(False)
         self.status_label.setText(f"❌ Error: {error_msg[:100]}")
-        QMessageBox.critical(self, "Error", error_msg)
+        if self._novel:
+            self.load_novel(self._novel.id)
+
+        # Check if error is provider/quota/key related to provide quick actions
+        err_lower = error_msg.lower()
+        is_provider_issue = any(
+            kw in err_lower
+            for kw in ["provider", "tokenrouter", "gemini", "groq", "api key", "suggestion", "quota", "rate limit", "429", "401", "503"]
+        )
+
+        if is_provider_issue:
+            msg_box = QMessageBox(self)
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setWindowTitle("Translation Error — Provider Failed")
+            msg_box.setText("❌ Translation stopped due to provider error.")
+            msg_box.setInformativeText(
+                f"{error_msg}\n\n"
+                "Would you like to switch to a different translation provider/model or check your API Keys?"
+            )
+            btn_switch = msg_box.addButton("🔄 Change Provider", QMessageBox.ButtonRole.ActionRole)
+            btn_keys = msg_box.addButton("🔑 Open API Keys", QMessageBox.ButtonRole.ActionRole)
+            btn_close = msg_box.addButton("Close", QMessageBox.ButtonRole.RejectRole)
+            msg_box.setDefaultButton(btn_switch)
+            msg_box.exec()
+
+            if msg_box.clickedButton() == btn_switch:
+                self.combo_provider.setFocus()
+                self.combo_provider.showPopup()
+            elif msg_box.clickedButton() == btn_keys:
+                self.open_api_keys_requested.emit()
+        else:
+            QMessageBox.critical(self, "Error", error_msg)
+
 
 
 # ── Main Window ────────────────────────────────────────────────────────────────
@@ -627,9 +769,11 @@ class MainWindow(QMainWindow):
         # Right: novel detail
         self.detail_panel = NovelDetailPanel()
         self.detail_panel.delete_requested.connect(self._on_novel_deleted)
+        self.detail_panel.open_api_keys_requested.connect(lambda: self.tabs.setCurrentIndex(2))
         splitter.addWidget(self.detail_panel)
         splitter.setSizes([240, 860])
         lib_layout.addWidget(splitter)
+
 
         self.tabs.addTab(library_tab, "📚 Library")
 

@@ -64,6 +64,8 @@ class AddNovelRequest(BaseModel):
 
 class TranslateRequest(BaseModel):
     chapter_ids: Optional[List[int]] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 class AddGlossaryRequest(BaseModel):
     source_term: str
@@ -143,15 +145,16 @@ async def translate_novel(novel_id: int, req: TranslateRequest, background_tasks
     novel = get_novel(novel_id)
     if not novel:
         raise HTTPException(404, "Novel not found")
-    background_tasks.add_task(_bg_translate, novel_id, req.chapter_ids)
+    background_tasks.add_task(_bg_translate, novel_id, req.chapter_ids, req.provider, req.model)
     return {"message": "Translation job started"}
 
 
-async def _bg_translate(novel_id: int, chapter_ids: Optional[List[int]]):
+async def _bg_translate(novel_id: int, chapter_ids: Optional[List[int]], provider: Optional[str] = None, model: Optional[str] = None):
     try:
-        await run_translation_job(novel_id, chapter_ids)
+        await run_translation_job(novel_id, chapter_ids, provider_name=provider, model_name=model)
     except Exception:
         pass
+
 
 
 @app.get("/novels/{novel_id}/epub")

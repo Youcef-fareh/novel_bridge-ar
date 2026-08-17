@@ -21,8 +21,10 @@ from backend.epub_builder import build_epub
 from backend.models import (
     Chapter, ChapterStatus, Job, JobStatus, JobType, NovelStatus,
 )
-from backend.translation.gemini_provider import GeminiProvider
-from backend.translation.groq_provider import GroqProvider
+from backend.translation import (
+    ProviderFailureError,
+    get_provider,
+)
 
 logger = logging.getLogger("novelbridge.pipeline")
 
@@ -38,19 +40,6 @@ def _get_semaphore() -> asyncio.Semaphore:
         _semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
     return _semaphore
 
-
-def _pick_provider():
-    """Return the best available translation provider."""
-    gemini = GeminiProvider()
-    if gemini.is_available():
-        return gemini
-    groq = GroqProvider()
-    if groq.is_available():
-        return groq
-    raise RuntimeError(
-        "No translation API key configured. "
-        "Please set GEMINI_API_KEY or GROQ_API_KEY in your .env file."
-    )
 
 
 # ── Progress callback type & JobControl ────────────────────────────────────────
@@ -210,19 +199,23 @@ async def run_scrape_job(
 async def run_translation_job(
     novel_id: int,
     chapter_ids: Optional[List[int]] = None,
+    provider_name: Optional[str] = None,
+    model_name: Optional[str] = None,
     progress_cb: Optional[ProgressCallback] = None,
     job_control: Optional[JobControl] = None,
 ) -> Job:
     """
     Translate scraped chapters.
+    Supports selecting provider (tokenrouter, gemini, groq, auto) and specific model.
     If chapter_ids is None, translate all pending chapters.
     Resumes: already-translated chapters are skipped.
+    If provider fails repeatedly, safely stops and suggests switching provider.
     """
     novel = get_novel(novel_id)
     if not novel:
         raise ValueError(f"Novel {novel_id} not found.")
 
-    provider = _pick_provider()
+    provider = get_provider(provider_name, model=model_name)
     glossary = get_all_glossary_rules()
 
     pending = get_pending_translation_chapters(novel_id)
@@ -236,34 +229,55 @@ async def run_translation_job(
     job = create_job(novel_id, JobType.translate, total_items=total)
     update_job(job.id, status=JobStatus.running)
 
+    target_model_info = f" ({model_name})" if model_name else ""
     if progress_cb:
-        progress_cb(0, total, f"Translating {total} chapters with {provider.provider_name}…")
+        progress_cb(
+            0,
+            total,
+            f"Translating {total} chapters with {provider.provider_name.capitalize()}{target_model_info}…",
+        )
+
+    consecutive_failures = 0
+    total_failures = 0
+    last_error_msg = ""
+    stop_event = asyncio.Event()
 
     async def translate_one(chapter: Chapter) -> None:
+        nonlocal consecutive_failures, total_failures, last_error_msg
+        if stop_event.is_set():
+            return
         if job_control:
             await job_control.check()
+
         async with _get_semaphore():
+            if stop_event.is_set():
+                return
             try:
                 if job_control:
                     await job_control.check()
                 update_chapter(chapter.id, status=ChapterStatus.translating)
-                translated = await provider.translate_chapter(chapter.raw_text or "", glossary)
+                translated = await provider.translate_chapter(
+                    chapter.raw_text or "",
+                    glossary,
+                    model=model_name,
+                )
                 update_chapter(chapter.id, translated_text=translated, status=ChapterStatus.translated)
+                consecutive_failures = 0  # Reset on success
             except asyncio.CancelledError:
                 update_chapter(chapter.id, status=ChapterStatus.scraped)
                 raise
             except Exception as e:
-                logger.warning(f"Failed to translate chapter {chapter.index}: {e}")
+                consecutive_failures += 1
+                total_failures += 1
+                last_error_msg = str(e)
+                logger.warning(
+                    f"Failed to translate chapter {chapter.index} with {provider.provider_name}: {e}"
+                )
                 update_chapter(chapter.id, status=ChapterStatus.failed)
-                # Try fallback provider if Gemini failed
-                groq = GroqProvider()
-                if provider.provider_name == "gemini" and groq.is_available():
-                    try:
-                        translated = await groq.translate_chapter(chapter.raw_text or "", glossary)
-                        update_chapter(chapter.id, translated_text=translated, status=ChapterStatus.translated)
-                        logger.info(f"Fallback Groq succeeded for chapter {chapter.index}")
-                    except Exception as e2:
-                        logger.error(f"Groq fallback also failed for chapter {chapter.index}: {e2}")
+
+                # Stop if consecutive failures threshold (2) or total failures threshold (3) is reached
+                if consecutive_failures >= 2 or total_failures >= 3:
+                    stop_event.set()
 
     done = 0
     try:
@@ -273,7 +287,7 @@ async def run_translation_job(
 
         async def worker():
             nonlocal done
-            while True:
+            while not stop_event.is_set():
                 if job_control:
                     await job_control.check()
                 try:
@@ -296,6 +310,20 @@ async def run_translation_job(
         worker_tasks = [asyncio.create_task(worker()) for _ in range(num_workers)]
         await asyncio.gather(*worker_tasks)
 
+        if stop_event.is_set():
+            suggestion = (
+                f"Translation stopped because provider '{provider.provider_name}' failed after multiple attempts "
+                f"({last_error_msg}).\n\n"
+                f"💡 Suggestion: Please change the translation provider or model (e.g., switch to TokenRouter, Gemini, or Groq) "
+                f"using the Provider dropdown, or check your API key in the 'API Keys' tab."
+            )
+            update_job(job.id, status=JobStatus.failed, error_message=suggestion)
+            raise ProviderFailureError(
+                provider=provider.provider_name,
+                error_detail=last_error_msg,
+                suggestion=suggestion,
+            )
+
         update_job(job.id, status=JobStatus.completed, progress=100, done_items=total)
         if progress_cb:
             progress_cb(total, total, "Translation complete!")
@@ -305,10 +333,13 @@ async def run_translation_job(
         logger.info(f"Translation job for novel {novel_id} was cancelled.")
         update_job(job.id, status=JobStatus.cancelled, done_items=done)
         raise
+    except ProviderFailureError:
+        raise
     except Exception as e:
         logger.error(f"Translation job failed: {e}", exc_info=True)
         update_job(job.id, status=JobStatus.failed, error_message=str(e))
         raise
+
 
 
 # ── EPUB build pipeline ────────────────────────────────────────────────────────

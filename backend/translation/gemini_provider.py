@@ -40,36 +40,55 @@ def _get_client():
     return _client
 
 
+GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-2.0-flash",
+]
+
+
 class GeminiProvider(TranslationProvider):
     provider_name = "gemini"
 
-    def is_available(self) -> bool:
-        return bool(_API_KEY and _API_KEY != "your_gemini_api_key_here")
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self._api_key = api_key or os.getenv("GEMINI_API_KEY", "")
+        self._model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-    async def translate_chapter(self, text: str, glossary: List[GlossaryRule]) -> str:
+    def is_available(self) -> bool:
+        key = self._api_key or os.getenv("GEMINI_API_KEY", "")
+        return bool(key and key.strip() not in ("your_gemini_api_key_here", "<YOUR_API_KEY>"))
+
+    async def translate_chapter(
+        self,
+        text: str,
+        glossary: List[GlossaryRule],
+        model: Optional[str] = None,
+    ) -> str:
         if not self.is_available():
-            raise RuntimeError("Gemini API key not configured. Please set GEMINI_API_KEY in your .env file.")
+            raise RuntimeError("Gemini API key not configured. Please set GEMINI_API_KEY in your .env or API Keys settings.")
 
         system_prompt = build_system_prompt(glossary)
+        model_to_use = model or self._model or "gemini-2.5-flash"
 
         # Run the blocking genai call in a thread pool
         result = await asyncio.get_event_loop().run_in_executor(
-            None, self._call_api, system_prompt, text
+            None, self._call_api, system_prompt, text, model_to_use
         )
         return apply_glossary_postpass(result, glossary)
 
     @retry(
         retry=retry_if_exception_type(Exception),
-        wait=wait_exponential(multiplier=1, min=4, max=60),
-        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(3),
         reraise=True,
     )
-    def _call_api(self, system_prompt: str, text: str) -> str:
+    def _call_api(self, system_prompt: str, text: str, model: str) -> str:
         from google.genai import types
 
         client = _get_client()
         response = client.models.generate_content(
-            model=_MODEL,
+            model=model,
             contents=text,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
@@ -79,4 +98,5 @@ class GeminiProvider(TranslationProvider):
         if not translated:
             raise RuntimeError("Gemini returned an empty response.")
         return translated
+
 
