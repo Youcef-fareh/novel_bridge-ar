@@ -3,7 +3,7 @@ NovelBridge — TokenRouter translation provider (OpenAI-compatible).
 Supports DeepSeek, Qwen, and any OpenAI-compatible models via TokenRouter API.
 """
 from __future__ import annotations
-
+from typing import Optional
 import asyncio
 import logging
 import os

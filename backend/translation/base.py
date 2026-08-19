@@ -2,7 +2,7 @@
 NovelBridge — Translation provider base class.
 """
 from __future__ import annotations
-
+from typing import Optional
 import re
 from abc import ABC, abstractmethod
 from typing import List

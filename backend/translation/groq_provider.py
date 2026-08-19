@@ -3,7 +3,7 @@ NovelBridge — Groq translation provider (fallback).
 Uses the Groq free API (llama-3.3-70b-versatile or similar).
 """
 from __future__ import annotations
-
+from typing import Optional
 import asyncio
 import os
 from typing import List

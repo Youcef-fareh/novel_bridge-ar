@@ -3,7 +3,7 @@ NovelBridge — Gemini translation provider (primary).
 Uses Google's Gemini API via official google-genai SDK.
 """
 from __future__ import annotations
-
+from typing import Optional
 import asyncio
 import os
 from typing import List

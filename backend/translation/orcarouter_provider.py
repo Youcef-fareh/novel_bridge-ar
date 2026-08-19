@@ -3,7 +3,7 @@ NovelBridge — OrcaRouter translation provider (OpenAI-compatible).
 Supports DeepSeek, OrcaRouter Free, and any OpenAI-compatible models via OrcaRouter API.
 """
 from __future__ import annotations
-
+from typing import Optional
 import asyncio
 import logging
 import os
