@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QInputDialog,
     QFormLayout,
     QHeaderView,
     QScrollArea,
@@ -497,6 +498,14 @@ class ApiKeysWidget(QWidget):
 SETTING_TYPES = ("API Key", "Model", "Base URL", "Custom")
 
 
+_PROVIDER_GROUPS = (
+    ("Gemini", "GEMINI", "GEMINI_API_KEY", "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"),
+    ("TokenRouter", "TOKENROUTER", "TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1"),
+    ("OrcaRouter", "ORCAROUTER", "ORCAROUTER_API_KEY", "ORCAROUTER_BASE_URL", "https://api.orcarouter.ai/v1"),
+    ("Groq", "GROQ", "GROQ_API_KEY", "GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+)
+
+
 class ApiSettingDialog(QDialog):
     """Dialog for creating or editing one environment-backed setting."""
 
@@ -799,3 +808,318 @@ class ApiSettingsTableWidget(QWidget):
             os.environ.pop(key, None)
         self._original_keys = set(updates)
         self._set_saved_status("Saved")
+
+
+class AddProviderDialog(QDialog):
+    """Collect the environment settings needed for a custom provider."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Provider")
+        self.setMinimumWidth(500)
+        layout = QVBoxLayout(self)
+        title = QLabel("Add Translation Provider")
+        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #ffffff;")
+        layout.addWidget(title)
+
+        form = QFormLayout()
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("e.g. OpenRouter")
+        form.addRow("Provider name:", self.name_input)
+        self.prefix_input = QLineEdit()
+        self.prefix_input.setPlaceholderText("e.g. OPENROUTER")
+        form.addRow("Environment prefix:", self.prefix_input)
+        self.key_input = QLineEdit()
+        self.key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow("API key:", self.key_input)
+        self.base_input = QLineEdit()
+        self.base_input.setPlaceholderText("https://api.example.com/v1")
+        form.addRow("Base URL:", self.base_input)
+        self.model_input = QLineEdit()
+        self.model_input.setPlaceholderText("provider/model-name")
+        form.addRow("Default model:", self.model_input)
+        self.language_combo = QComboBox()
+        self.language_combo.addItems(["English", "Arabic"])
+        form.addRow("Source language:", self.language_combo)
+        layout.addLayout(form)
+
+        hint = QLabel("The provider will be saved using PREFIX_API_KEY, PREFIX_BASE_URL, and PREFIX_MODEL.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #718096; font-size: 11px;")
+        layout.addWidget(hint)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._validate)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _validate(self) -> None:
+        prefix = re.sub(r"[^A-Za-z0-9_]", "_", self.prefix_input.text().strip()).upper().strip("_")
+        self.prefix_input.setText(prefix)
+        if not self.name_input.text().strip() or not prefix or not self.base_input.text().strip():
+            QMessageBox.warning(self, "Missing information", "Provider name, prefix, and base URL are required.")
+            return
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", prefix):
+            QMessageBox.warning(self, "Invalid prefix", "Use letters, numbers, and underscores only.")
+            return
+        self.accept()
+
+    def get_values(self) -> tuple[str, str, str, str, str, str]:
+        return (
+            self.name_input.text().strip(),
+            self.prefix_input.text().strip(),
+            self.key_input.text().strip(),
+            self.base_input.text().strip(),
+            self.model_input.text().strip(),
+            self.language_combo.currentText(),
+        )
+
+
+class ProviderSettingsWidget(QWidget):
+    """Provider-oriented API settings page."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._env: Dict[str, str] = {}
+        self._models: Dict[str, List[str]] = {}
+        self._model_widgets: Dict[str, QVBoxLayout] = {}
+        self._provider_groups = list(_PROVIDER_GROUPS)
+        self._setup_ui()
+        self._reload_env()
+
+    def _setup_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(20, 14, 20, 14)
+        title = QLabel("API Providers")
+        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
+        header.addWidget(title)
+        header.addStretch()
+        self.btn_reload = QPushButton("↺ Reload from .env")
+        self.btn_reload.setObjectName("btn_secondary")
+        self.btn_reload.clicked.connect(self._reload_env)
+        header.addWidget(self.btn_reload)
+        self.btn_add_provider = QPushButton("＋ Add Provider")
+        self.btn_add_provider.setObjectName("btn_success")
+        self.btn_add_provider.clicked.connect(self._add_provider)
+        header.addWidget(self.btn_add_provider)
+        self.btn_save = QPushButton("💾 Save All")
+        self.btn_save.setObjectName("btn_primary")
+        self.btn_save.clicked.connect(self._save_env)
+        header.addWidget(self.btn_save)
+        root.addLayout(header)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._cards = QWidget()
+        self._cards_layout = QVBoxLayout(self._cards)
+        self._cards_layout.setContentsMargins(20, 8, 20, 20)
+        self._cards_layout.setSpacing(14)
+        self._cards_layout.addStretch()
+        scroll.setWidget(self._cards)
+        root.addWidget(scroll, stretch=1)
+
+        self.footer_status = QLabel("")
+        self.footer_status.setStyleSheet("color: #718096; padding: 8px 20px;")
+        root.addWidget(self.footer_status)
+
+    def _reload_env(self) -> None:
+        self._env = _read_env_file()
+        for key in list(os.environ):
+            if key.endswith(("_API_KEY", "_MODEL", "_BASE_URL", "_MODELS")) and key not in self._env:
+                self._env[key] = os.environ[key]
+        self._models = {}
+        for _name, prefix, _key, _base, _default_base in self._provider_groups:
+            saved = self._env.get(f"{prefix}_MODELS", "")
+            self._models[prefix] = [m for m in saved.split(",") if m.strip()] if saved else self._known_models(prefix)
+        self._render_cards()
+        self.footer_status.setText(f"Loaded from .env · {datetime.now().strftime('%H:%M:%S')}")
+
+    @staticmethod
+    def _known_models(prefix: str) -> List[str]:
+        from backend.translation import PROVIDER_MODELS
+        return list(PROVIDER_MODELS.get(prefix.casefold(), []))
+
+    def _render_cards(self) -> None:
+        while self._cards_layout.count() > 1:
+            item = self._cards_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self._model_widgets.clear()
+        for provider, prefix, key_var, base_var, default_base in self._provider_groups:
+            self._cards_layout.insertWidget(self._cards_layout.count() - 1, self._make_provider_card(
+                provider, prefix, key_var, base_var, default_base
+            ))
+
+    def _add_provider(self) -> None:
+        dialog = AddProviderDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        provider, prefix, api_key, base_url, model, language = dialog.get_values()
+        if any(item[1] == prefix for item in self._provider_groups):
+            QMessageBox.warning(self, "Provider exists", f"{prefix} is already configured.")
+            return
+        self._provider_groups.append((provider, prefix, f"{prefix}_API_KEY", f"{prefix}_BASE_URL", base_url))
+        self._env[f"{prefix}_API_KEY"] = api_key
+        self._env[f"{prefix}_BASE_URL"] = base_url
+        self._env[f"{prefix}_MODEL"] = model
+        self._models[prefix] = [model] if model else []
+        self._env[f"{prefix}_LANGUAGE"] = language
+        self._render_cards()
+        self.footer_status.setText("Unsaved changes")
+
+    def _make_provider_card(self, provider: str, prefix: str, key_var: str, base_var: str, default_base: str) -> QWidget:
+        card = QFrame()
+        card.setStyleSheet("QFrame { background: #1a1d27; border: 1px solid #2d3748; border-radius: 8px; }")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(8)
+
+        top = QHBoxLayout()
+        title = QLabel(provider)
+        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #ffffff;")
+        top.addWidget(title)
+        top.addStretch()
+        connected = bool(self._env.get(key_var, "").strip())
+        status = QLabel("● Connected" if connected else "○ Not configured")
+        status.setStyleSheet(f"color: {'#68d391' if connected else '#a0aec0'}; font-weight: 600;")
+        top.addWidget(status)
+        layout.addLayout(top)
+
+        key_value = self._env.get(key_var, "")
+        base_value = self._env.get(base_var, default_base)
+        details = QFormLayout()
+        details.setContentsMargins(0, 4, 0, 0)
+        key_label = QLabel(_mask(key_value) if key_value else "Not set")
+        key_label.setObjectName(f"key_{prefix}")
+        key_label.setStyleSheet("color: #e2e8f0; font-family: Consolas, monospace;")
+        details.addRow("API Key", key_label)
+        base_input = QLineEdit(base_value)
+        base_input.setObjectName(f"base_{prefix}")
+        base_input.textChanged.connect(lambda value, p=prefix, var=base_var: self._set_env(var, value))
+        details.addRow("Base URL", base_input)
+        layout.addLayout(details)
+
+        model_header = QHBoxLayout()
+        models_label = QLabel("MODELS")
+        models_label.setStyleSheet("font-weight: 700; color: #a0aec0; letter-spacing: 0.08em;")
+        model_header.addWidget(models_label)
+        model_header.addStretch()
+        add_model = QPushButton("＋ Add Model")
+        add_model.setObjectName("btn_secondary")
+        add_model.clicked.connect(lambda _, p=prefix: self._add_model(p))
+        model_header.addWidget(add_model)
+        layout.addLayout(model_header)
+
+        model_box = QFrame()
+        model_box.setStyleSheet("QFrame { background: #141720; border: 1px solid #2d3748; border-radius: 6px; }")
+        model_layout = QVBoxLayout(model_box)
+        model_layout.setContentsMargins(10, 6, 10, 6)
+        model_layout.setSpacing(2)
+        self._model_widgets[prefix] = model_layout
+        for model in self._models.get(prefix, []):
+            self._add_model_row(prefix, model)
+        layout.addWidget(model_box)
+
+        actions = QHBoxLayout()
+        actions_label = QLabel("Provider Actions:")
+        actions_label.setStyleSheet("color: #a0aec0;")
+        actions.addWidget(actions_label)
+        actions.addStretch()
+        for text, callback in (
+            ("Test Provider", lambda _, p=prefix: self._test_provider(p)),
+            ("Edit", lambda _, v=key_var: self._edit_key(v)),
+            ("Rotate Key", lambda _, v=key_var: self._edit_key(v)),
+            ("Disable", lambda _, v=key_var: self._disable_key(v)),
+        ):
+            button = QPushButton(text)
+            button.setObjectName("btn_secondary")
+            button.clicked.connect(callback)
+            actions.addWidget(button)
+        layout.addLayout(actions)
+        return card
+
+    def _add_model_row(self, prefix: str, model: str) -> None:
+        layout = self._model_widgets.get(prefix)
+        if layout is None:
+            return
+        row = QHBoxLayout()
+        dot = QLabel("●")
+        dot.setStyleSheet("color: #68d391;")
+        row.addWidget(dot)
+        name = QLabel(model)
+        name.setStyleSheet("color: #e2e8f0; font-weight: 600;")
+        row.addWidget(name, stretch=1)
+        role = QLabel("Translation")
+        role.setStyleSheet("color: #718096;")
+        row.addWidget(role)
+        test = QPushButton("Test")
+        test.setObjectName("btn_secondary")
+        test.clicked.connect(lambda _, m=model: QMessageBox.information(self, "Model", f"{m} is configured for translation."))
+        row.addWidget(test)
+        edit = QPushButton("Edit")
+        edit.setObjectName("btn_secondary")
+        edit.clicked.connect(lambda _, p=prefix, m=model: self._edit_model(p, m))
+        row.addWidget(edit)
+        layout.addLayout(row)
+
+    def _set_env(self, key: str, value: str) -> None:
+        self._env[key] = value.strip()
+        self.footer_status.setText("Unsaved changes")
+
+    def _add_model(self, prefix: str) -> None:
+        model, ok = QInputDialog.getText(self, "Add Model", f"Model for {prefix}:")
+        if ok and model.strip():
+            self._models.setdefault(prefix, []).append(model.strip())
+            self._render_cards()
+            self.footer_status.setText("Unsaved changes")
+
+    def _edit_model(self, prefix: str, old_model: str) -> None:
+        model, ok = QInputDialog.getText(self, "Edit Model", "Model:", text=old_model)
+        if ok and model.strip():
+            models = self._models[prefix]
+            models[models.index(old_model)] = model.strip()
+            self._render_cards()
+            self.footer_status.setText("Unsaved changes")
+
+    def _edit_key(self, key_var: str) -> None:
+        entry = {"provider": key_var.split("_")[0].title(), "type": "API Key", "env_var": key_var, "value": self._env.get(key_var, "")}
+        dialog = ApiSettingDialog(entry, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._env[key_var] = dialog.get_entry()["value"]
+            self._render_cards()
+            self.footer_status.setText("Unsaved changes")
+
+    def _disable_key(self, key_var: str) -> None:
+        self._env[key_var] = ""
+        self._render_cards()
+        self.footer_status.setText("Unsaved changes")
+
+    def _test_provider(self, prefix: str) -> None:
+        key_var = f"{prefix}_API_KEY"
+        if self._env.get(key_var, "").strip():
+            QMessageBox.information(self, "Provider Test", f"{prefix} is configured and ready to test.")
+        else:
+            QMessageBox.warning(self, "Provider Test", f"Add {key_var} before testing this provider.")
+
+    def _save_env(self) -> None:
+        for prefix, models in self._models.items():
+            self._env[f"{prefix}_MODELS"] = ",".join(models)
+            if models and not self._env.get(f"{prefix}_MODEL"):
+                self._env[f"{prefix}_MODEL"] = models[0]
+        try:
+            _write_env_file(self._env)
+            for key, value in self._env.items():
+                if value:
+                    os.environ[key] = value
+                else:
+                    os.environ.pop(key, None)
+            self.footer_status.setText(f"Saved · {datetime.now().strftime('%H:%M:%S')}")
+        except OSError as exc:
+            QMessageBox.critical(self, "Save Failed", str(exc))

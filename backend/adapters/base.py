@@ -39,6 +39,10 @@ class SiteAdapter(ABC):
     # Whether this source is already in Arabic (no translation needed)
     is_native_arabic: bool = False
 
+    # Optional registry metadata for custom adapters.
+    source_language: str = "Unknown"
+    scraping_method: str = "Unknown"
+
     @abstractmethod
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
         """Fetch and return novel metadata (title, author, cover, description)."""

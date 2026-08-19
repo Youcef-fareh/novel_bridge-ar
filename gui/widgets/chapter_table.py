@@ -55,7 +55,21 @@ class ChapterTableWidget(QWidget):
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(False)
         self.table.verticalHeader().setVisible(False)
+        self.table.cellClicked.connect(self._on_cell_clicked)
         layout.addWidget(self.table)
+
+    def _on_cell_clicked(self, row: int, column: int) -> None:
+        """Toggle selection when the user clicks anywhere in a chapter row."""
+        if column == 0:
+            return
+        item = self.table.item(row, 0)
+        if item is None:
+            return
+        item.setCheckState(
+            Qt.CheckState.Unchecked
+            if item.checkState() == Qt.CheckState.Checked
+            else Qt.CheckState.Checked
+        )
 
     def set_chapters(self, chapters: List[Chapter], is_native_arabic: bool = False) -> None:
         self.table.setSortingEnabled(False)

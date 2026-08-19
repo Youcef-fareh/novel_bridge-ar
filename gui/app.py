@@ -42,10 +42,15 @@ from backend.translation import (
     PROVIDER_MODELS,
     ProviderFailureError,
 )
-from gui.widgets.api_keys import ApiSettingsTableWidget
+from gui.widgets.api_keys import ProviderSettingsWidget
 from gui.widgets.chapter_table import ChapterTableWidget
 from gui.widgets.glossary_editor import GlossaryEditorWidget
 from gui.widgets.novel_list import NovelListWidget
+from gui.widgets.website_setup import (
+    AdapterRegistryWidget,
+    WebsiteSetupWidget,
+    load_custom_adapters,
+)
 
 
 
@@ -830,6 +835,15 @@ class MainWindow(QMainWindow):
         settings_tab = self._build_settings_tab()
         self.tabs.addTab(settings_tab, "🔑 API Keys")
 
+        # Tab 4: Website adapter setup
+        self.website_setup = WebsiteSetupWidget()
+        self.tabs.addTab(self.website_setup, "🌐 Add Website")
+
+        # Tab 5: Installed adapter registry
+        self.adapter_registry = AdapterRegistryWidget()
+        self.website_setup.adapter_added.connect(lambda _: self.adapter_registry.refresh())
+        self.tabs.addTab(self.adapter_registry, "🧩 Adapters")
+
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -846,7 +860,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         # ── API Key Management (takes the bulk of the space) ─────────────────
-        self.api_keys_widget = ApiSettingsTableWidget()
+        self.api_keys_widget = ProviderSettingsWidget()
         layout.addWidget(self.api_keys_widget, stretch=1)
 
         # ── Collapsed info section ────────────────────────────────────────────
@@ -992,6 +1006,7 @@ def run_app() -> None:
     AdapterRegistry.register(WTRLabAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
+    load_custom_adapters()
 
     app = QApplication(sys.argv)
     app.setApplicationName("NovelBridge")

@@ -117,6 +117,22 @@ def _chapter_number(url: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+_NOVEL_ID_RE = re.compile(r"/novel/(\d+)(?:/|$|\?)")
+
+
+def _novel_id_from_url(url: str) -> Optional[str]:
+    """
+    Extract the numeric novel id from a wtr-lab.com URL, e.g.
+    ".../novel/91978/i-took-my-whole-family-in-an-airship-to-survive"
+    -> "91978".
+
+    Used to detect and filter out chapter links that ended up pointing
+    at the wrong novel (e.g. after a stray client-side navigation).
+    """
+    m = _NOVEL_ID_RE.search(url)
+    return m.group(1) if m else None
+
+
 class WTRLabAdapter(SiteAdapter):
     site_id = _SITE_ID
 
@@ -268,9 +284,10 @@ class WTRLabAdapter(SiteAdapter):
         crashing outright.
         """
         toc_url = _with_tab(novel_url, "toc")
+        expected_novel_id = _novel_id_from_url(novel_url)
 
         if _PLAYWRIGHT_AVAILABLE:
-            html = await self._fetch_rendered_toc_html(toc_url)
+            html = await self._fetch_rendered_toc_html(toc_url, expected_novel_id)
             refs = self._extract_chapter_refs(html, toc_url)
         else:
             html = await fetch_html(toc_url, _SITE_ID)
@@ -282,6 +299,28 @@ class WTRLabAdapter(SiteAdapter):
             # kept in case a future/alternate build restores it).
             if len(refs) <= 5:
                 refs.extend(self._extract_chapters_from_next_data(html, toc_url))
+
+        # Safety net: no matter what happened upstream (a stray SPA
+        # navigation during the accordion-click loop, a stale cached
+        # page, etc.), never let a chapter link belonging to a
+        # different novel slip into the result.
+        if expected_novel_id is not None:
+            good_refs = []
+            dropped = 0
+            for ref in refs:
+                ref_id = _novel_id_from_url(ref.source_url)
+                if ref_id is not None and ref_id != expected_novel_id:
+                    dropped += 1
+                    continue
+                good_refs.append(ref)
+            if dropped:
+                print(
+                    f"[wtrlab] warning: dropped {dropped} chapter link(s) "
+                    f"belonging to a different novel id while scraping "
+                    f"novel {expected_novel_id!r} — the headless browser "
+                    f"likely navigated away mid-scrape."
+                )
+            refs = good_refs
 
         by_url: Dict[str, ChapterRef] = {ref.source_url: ref for ref in refs}
 
@@ -302,7 +341,9 @@ class WTRLabAdapter(SiteAdapter):
             for i, r in enumerate(ordered)
         ]
 
-    async def _fetch_rendered_toc_html(self, toc_url: str) -> str:
+    async def _fetch_rendered_toc_html(
+        self, toc_url: str, expected_novel_id: Optional[str] = None
+    ) -> str:
         """
         Load the TOC page in a real (headless) browser, click open every
         accordion section, and return the fully rendered HTML.
@@ -311,7 +352,21 @@ class WTRLabAdapter(SiteAdapter):
         accordion section's chapter rows (e.g. "Chapters 251 - 500")
         after that section has been clicked; the rows do not exist in
         the server-rendered HTML beforehand.
+
+        This app is client-side routed (Next.js), so a click can
+        silently navigate the browser to an entirely different page
+        (e.g. a different novel) without raising any error. To guard
+        against that:
+        - Only elements whose visible text actually looks like
+          "Chapters N - M" are clicked (never a generically-matched
+          "accordion-trigger" that might belong to an unrelated widget).
+        - After every click, the current URL is checked. If it no
+          longer points at the expected novel, we navigate straight
+          back to toc_url before continuing, and skip counting that
+          click's result.
         """
+        chapters_pattern = re.compile(r"chapters?\s+\d+\s*-\s*\d+", re.IGNORECASE)
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
 
@@ -322,10 +377,36 @@ class WTRLabAdapter(SiteAdapter):
                 triggers = page.locator('[data-slot="accordion-trigger"]')
                 trigger_count = await triggers.count()
 
+                # Snapshot which trigger indices are genuinely chapter-range
+                # accordions *before* clicking anything, since clicking can
+                # change what's on the page and shift indices around.
+                chapter_trigger_indices = []
                 for i in range(trigger_count):
+                    try:
+                        text = (await triggers.nth(i).inner_text()).strip()
+                    except Exception:
+                        continue
+                    if chapters_pattern.search(text):
+                        chapter_trigger_indices.append(i)
+
+                for i in chapter_trigger_indices:
+                    # Re-query each time: the DOM may have re-rendered
+                    # after the previous click.
+                    triggers = page.locator('[data-slot="accordion-trigger"]')
+
+                    if i >= await triggers.count():
+                        continue
+
                     trigger = triggers.nth(i)
 
                     try:
+                        text = (await trigger.inner_text()).strip()
+                        if not chapters_pattern.search(text):
+                            # DOM shifted under us; this index no longer
+                            # points at a chapter-range trigger. Skip it
+                            # rather than risk clicking something else.
+                            continue
+
                         await trigger.scroll_into_view_if_needed()
                         await trigger.click()
 
@@ -337,6 +418,20 @@ class WTRLabAdapter(SiteAdapter):
                         # If one section fails to expand, keep going —
                         # we still want whatever the other sections give.
                         continue
+
+                    # Guard against a silent client-side navigation away
+                    # from this novel (this site is a Next.js SPA, so a
+                    # misdirected click doesn't throw — it just changes
+                    # the page).
+                    if expected_novel_id is not None:
+                        current_id = _novel_id_from_url(page.url)
+                        if current_id is not None and current_id != expected_novel_id:
+                            print(
+                                f"[wtrlab] warning: navigated away to novel "
+                                f"{current_id!r} while expecting "
+                                f"{expected_novel_id!r}; returning to TOC."
+                            )
+                            await page.goto(toc_url, wait_until="networkidle")
 
                 # Final settle, in case the last click's content was
                 # still streaming in.
@@ -956,7 +1051,17 @@ class WTRLabAdapter(SiteAdapter):
         """
         Extract chapter body text.
         """
-        html = await fetch_html(chapter_url, _SITE_ID)
+        expected_novel_id = _novel_id_from_url(chapter_url)
+        expected_chapter = _chapter_number(chapter_url)
+
+        if _PLAYWRIGHT_AVAILABLE:
+            html = await self._fetch_rendered_chapter_html(
+                chapter_url,
+                expected_novel_id,
+                expected_chapter,
+            )
+        else:
+            html = await fetch_html(chapter_url, _SITE_ID)
 
         configured = _split_selectors(_SEL.get("chapter_text", ""))
 
@@ -1006,3 +1111,40 @@ class WTRLabAdapter(SiteAdapter):
             )
             or ""
         )
+
+    async def _fetch_rendered_chapter_html(
+        self,
+        chapter_url: str,
+        expected_novel_id: Optional[str],
+        expected_chapter: Optional[int],
+    ) -> str:
+        """Load a chapter and reject silent redirects to another novel."""
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            try:
+                page = await browser.new_page()
+                await page.goto(chapter_url, wait_until="networkidle")
+
+                actual_novel_id = _novel_id_from_url(page.url)
+                actual_chapter = _chapter_number(page.url)
+                if expected_novel_id and actual_novel_id != expected_novel_id:
+                    raise RuntimeError(
+                        f"WTR-Lab redirected chapter to another novel: "
+                        f"expected {expected_novel_id}, got {actual_novel_id}"
+                    )
+                if expected_chapter and actual_chapter != expected_chapter:
+                    raise RuntimeError(
+                        f"WTR-Lab redirected to another chapter: "
+                        f"expected {expected_chapter}, got {actual_chapter}"
+                    )
+
+                try:
+                    await page.wait_for_selector(
+                        ".chapter-content, .story-part, #chapter-container, article",
+                        timeout=15_000,
+                    )
+                except Exception:
+                    pass
+                return await page.content()
+            finally:
+                await browser.close()

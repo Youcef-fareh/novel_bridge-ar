@@ -249,6 +249,51 @@ def test_provider_failure_error():
     assert "switch" in str(err).lower()
 
 
+def test_gemini_provider_uses_instance_key(monkeypatch):
+    import sys
+    import types
+
+    import backend.translation.gemini_provider as gemini_module
+
+    captured = {}
+
+    class FakeGenerateContentConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeResponse:
+        text = "translated"
+
+    class FakeModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            return FakeResponse()
+
+    class FakeClient:
+        def __init__(self, api_key):
+            captured["api_key"] = api_key
+
+        models = FakeModels()
+
+    fake_google = types.ModuleType("google")
+    fake_genai = types.ModuleType("google.genai")
+    fake_genai.Client = FakeClient
+    fake_genai.types = types.SimpleNamespace(GenerateContentConfig=FakeGenerateContentConfig)
+    fake_google.genai = fake_genai
+
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setattr(gemini_module, "_client", None)
+    monkeypatch.setattr(gemini_module, "_API_KEY", "stale-key")
+
+    provider = gemini_module.GeminiProvider(api_key="fresh-key")
+    monkeypatch.setattr(provider, "_client", None)
+    result = provider._call_api("system", "text", "gemini-2.5-flash")
+
+    assert result == "translated"
+    assert captured["api_key"] == "fresh-key"
+
+
 @pytest.mark.asyncio
 async def test_translation_pipeline_failure_stops_and_suggests(tmp_path, monkeypatch):
     from datetime import datetime, timezone

@@ -28,16 +28,12 @@ from backend.translation.base import (
 _API_KEY = os.getenv("GEMINI_API_KEY", "")
 _MODEL   = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-# Lazy-initialise client to avoid errors if key is missing
+# Kept for compatibility with older callers; the runtime cache is instance-scoped.
 _client = None
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        from google import genai
-        _client = genai.Client(api_key=_API_KEY)
-    return _client
+# The client must be instance-scoped so different API keys/settings do not leak
+# across provider objects created at different times or by tests.
 
 
 GEMINI_MODELS = [
@@ -54,6 +50,13 @@ class GeminiProvider(TranslationProvider):
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self._api_key = api_key or os.getenv("GEMINI_API_KEY", "")
         self._model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from google import genai
+            self._client = genai.Client(api_key=self._api_key)
+        return self._client
 
     def is_available(self) -> bool:
         key = self._api_key or os.getenv("GEMINI_API_KEY", "")
@@ -86,7 +89,7 @@ class GeminiProvider(TranslationProvider):
     def _call_api(self, system_prompt: str, text: str, model: str) -> str:
         from google.genai import types
 
-        client = _get_client()
+        client = self._get_client()
         response = client.models.generate_content(
             model=model,
             contents=text,
