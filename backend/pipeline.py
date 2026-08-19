@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import weakref
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -30,15 +31,17 @@ logger = logging.getLogger("novelbridge.pipeline")
 
 _MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT_JOBS", "3"))
 
-# Semaphore shared across the whole process
-_semaphore: Optional[asyncio.Semaphore] = None
+# Each GUI worker owns a separate event loop. Keep one semaphore per loop.
+_semaphores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = weakref.WeakKeyDictionary()
 
 
 def _get_semaphore() -> asyncio.Semaphore:
-    global _semaphore
-    if _semaphore is None:
-        _semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
-    return _semaphore
+    loop = asyncio.get_running_loop()
+    semaphore = _semaphores.get(loop)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
+        _semaphores[loop] = semaphore
+    return semaphore
 
 
 
@@ -147,36 +150,36 @@ async def run_scrape_job(
         for ref in chapter_refs:
             upsert_chapter(novel_id, ref.index, ref.title, ref.source_url)
 
-        # Step 3: Scrape each pending chapter
-        for ref in chapter_refs:
-            if job_control:
-                await job_control.check()
+        # Step 3: Scrape pending chapters concurrently, bounded by the shared semaphore.
+        chapters_by_index = {chapter.index: chapter for chapter in get_chapters(novel_id)}
+        pending_refs = [
+            ref for ref in chapter_refs
+            if chapters_by_index.get(ref.index)
+            and chapters_by_index[ref.index].status in (ChapterStatus.pending, ChapterStatus.failed)
+        ]
+        done += total - len(pending_refs)
 
-            chapters = get_chapters(novel_id)
-            ch = next((c for c in chapters if c.index == ref.index), None)
-            if ch and ch.status not in (ChapterStatus.pending, ChapterStatus.failed):
-                done += 1
-                continue  # Already scraped — resume support
-
+        async def scrape_one(ref):
+            nonlocal done
+            chapter = chapters_by_index[ref.index]
             async with _get_semaphore():
                 try:
                     if job_control:
                         await job_control.check()
                     text = await adapter.get_chapter_text(ref.source_url)
-                    if ch:
-                        update_chapter(ch.id, raw_text=text, status=ChapterStatus.scraped)
+                    update_chapter(chapter.id, raw_text=text, status=ChapterStatus.scraped)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
                     logger.warning(f"Failed to scrape chapter {ref.index}: {e}")
-                    if ch:
-                        update_chapter(ch.id, status=ChapterStatus.failed)
-
+                    update_chapter(chapter.id, status=ChapterStatus.failed)
             done += 1
             progress = int(done / total * 100)
             update_job(job.id, done_items=done, progress=progress)
             if progress_cb:
                 progress_cb(done, total, f"Scraped chapter {done}/{total}: {ref.title[:50]}")
+
+        await asyncio.gather(*(scrape_one(ref) for ref in pending_refs))
 
         update_novel(novel_id, status=NovelStatus.scraped)
         update_job(job.id, status=JobStatus.completed, progress=100, done_items=total)

@@ -6,10 +6,21 @@ Corrected version.
 Key behavior:
 - Metadata is fetched with ?tab=about.
 - Chapter list is fetched with ?tab=toc.
-- The complete table-of-content container is preferred.
-- The "Latest Release" widget is ignored where detectable.
-- If the DOM only exposes a small number of chapters, the adapter also
-  attempts to extract chapter data from Next.js embedded JSON.
+- The full chapter list on wtr-lab.com's current site is split into
+  collapsed accordion sections ("Chapters 1 - 250", "Chapters 251 -
+  500", ...). Those sections are populated by client-side JavaScript
+  only after they are clicked open — they are NOT present in the
+  server-rendered HTML at all. A plain HTTP GET therefore only ever
+  sees the handful of links that already exist in the raw markup:
+  the "Start Reading" link and the ~5-chapter "Latest Release"
+  widget.
+- To get the real, complete list this adapter drives a headless
+  browser (Playwright) that opens every accordion section before
+  reading the rendered DOM. If Playwright isn't installed, it falls
+  back to a plain HTTP fetch, which will only recover the small
+  "Latest Release"/"Start Reading" set described above.
+- The "Latest Release" widget is ignored where detectable, so it
+  never masquerades as the full chapter list.
 """
 
 from __future__ import annotations
@@ -17,7 +28,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 try:
@@ -34,6 +45,13 @@ try:
 except ImportError:
     BeautifulSoup = None
     _BS4_AVAILABLE = False
+
+try:
+    from playwright.async_api import async_playwright
+
+    _PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    _PLAYWRIGHT_AVAILABLE = False
 
 from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
 from backend.adapters.fetcher import (
@@ -234,31 +252,38 @@ class WTRLabAdapter(SiteAdapter):
         """
         Fetch the complete chapter list.
 
-        This explicitly requests ?tab=toc and follows pagination if present.
+        The full list lives entirely under a single ?tab=toc URL, split
+        into collapsed accordion sections (e.g. "Chapters 1 - 250").
+        Those sections only render their chapter rows client-side, after
+        being clicked open, so a plain HTTP GET can never see them.
+
+        When Playwright is available, this drives a real (headless)
+        browser: load the page, click every accordion section open, then
+        read the fully rendered DOM. This is the supported path.
+
+        Without Playwright, this degrades to a single plain HTTP fetch,
+        which will only recover the "Start Reading" link and the
+        handful of chapters shown in the "Latest Release" widget — not
+        the full list. A warning-worthy situation, but better than
+        crashing outright.
         """
         toc_url = _with_tab(novel_url, "toc")
 
-        by_url: Dict[str, ChapterRef] = {}
-        seen_pages: Set[str] = set()
-        current_url = toc_url
+        if _PLAYWRIGHT_AVAILABLE:
+            html = await self._fetch_rendered_toc_html(toc_url)
+            refs = self._extract_chapter_refs(html, toc_url)
+        else:
+            html = await fetch_html(toc_url, _SITE_ID)
+            refs = self._extract_chapter_refs(html, toc_url)
 
-        for _ in range(200):
-            if current_url in seen_pages:
-                break
+            # The "Latest Release" widget commonly shows only five
+            # chapters. If we see five or fewer, try the Next.js-data
+            # fallback (a no-op on the current site, but harmless and
+            # kept in case a future/alternate build restores it).
+            if len(refs) <= 5:
+                refs.extend(self._extract_chapters_from_next_data(html, toc_url))
 
-            seen_pages.add(current_url)
-
-            html, refs = await self._get_chapter_list_page(current_url)
-
-            for ref in refs:
-                by_url[ref.source_url] = ref
-
-            next_url = self._find_next_toc_page_auto(current_url, html)
-
-            if not next_url or next_url in seen_pages:
-                break
-
-            current_url = next_url
+        by_url: Dict[str, ChapterRef] = {ref.source_url: ref for ref in refs}
 
         ordered = sorted(
             by_url.values(),
@@ -277,23 +302,49 @@ class WTRLabAdapter(SiteAdapter):
             for i, r in enumerate(ordered)
         ]
 
-    async def _get_chapter_list_page(self, toc_url: str) -> tuple[str, List[ChapterRef]]:
+    async def _fetch_rendered_toc_html(self, toc_url: str) -> str:
         """
-        Fetch one TOC page and extract chapter references.
+        Load the TOC page in a real (headless) browser, click open every
+        accordion section, and return the fully rendered HTML.
 
-        If only a small number of chapters is found in the visible DOM,
-        also attempt extraction from embedded Next.js JSON.
+        This is required because wtr-lab.com only populates an
+        accordion section's chapter rows (e.g. "Chapters 251 - 500")
+        after that section has been clicked; the rows do not exist in
+        the server-rendered HTML beforehand.
         """
-        html = await fetch_html(toc_url, _SITE_ID)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
 
-        refs = self._extract_chapter_refs(html, toc_url)
+            try:
+                page = await browser.new_page()
+                await page.goto(toc_url, wait_until="networkidle")
 
-        # The "Latest Release" widget commonly shows only five chapters.
-        # If we see five or fewer, try Next.js data as a fallback.
-        if len(refs) <= 5:
-            refs.extend(self._extract_chapters_from_next_data(html, toc_url))
+                triggers = page.locator('[data-slot="accordion-trigger"]')
+                trigger_count = await triggers.count()
 
-        return html, refs
+                for i in range(trigger_count):
+                    trigger = triggers.nth(i)
+
+                    try:
+                        await trigger.scroll_into_view_if_needed()
+                        await trigger.click()
+
+                        # Give the click handler time to fetch/render the
+                        # section's chapter rows before moving on.
+                        await page.wait_for_load_state("networkidle")
+                        await page.wait_for_timeout(300)
+                    except Exception:
+                        # If one section fails to expand, keep going —
+                        # we still want whatever the other sections give.
+                        continue
+
+                # Final settle, in case the last click's content was
+                # still streaming in.
+                await page.wait_for_timeout(500)
+
+                return await page.content()
+            finally:
+                await browser.close()
 
     # ------------------------------------------------------------------
     # DOM extraction
@@ -774,6 +825,12 @@ class WTRLabAdapter(SiteAdapter):
     # ------------------------------------------------------------------
     # Pagination
     # ------------------------------------------------------------------
+    # NOTE: not currently called by get_chapter_list(). The whole
+    # chapter list on wtr-lab.com lives under a single ?tab=toc URL,
+    # split into in-page accordion sections rather than separate pages,
+    # so there is no "next page" link to follow. Kept here (unused) in
+    # case the site reintroduces real multi-page pagination, or for
+    # reuse by other adapters.
     def _find_next_toc_page_auto(self, current_url: str, html: str) -> Optional[str]:
         """
         Find the next TOC page.

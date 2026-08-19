@@ -43,46 +43,60 @@ class ChapterTableWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["#", "Title", "Status", "Translation"])
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["Select", "#", "Title", "Status", "Translation"])
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(False)
         self.table.verticalHeader().setVisible(False)
         layout.addWidget(self.table)
 
     def set_chapters(self, chapters: List[Chapter], is_native_arabic: bool = False) -> None:
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         self._is_native_arabic = is_native_arabic
         if is_native_arabic:
-            self.table.setHorizontalHeaderLabels(["#", "Title", "Status", "Content"])
+            self.table.setHorizontalHeaderLabels(["Select", "#", "Title", "Status", "Content"])
         else:
-            self.table.setHorizontalHeaderLabels(["#", "Title", "Status", "Translation"])
+            self.table.setHorizontalHeaderLabels(["Select", "#", "Title", "Status", "Translation"])
 
         for chapter in chapters:
             row = self.table.rowCount()
             self.table.insertRow(row)
 
+            # Checkbox selection is independent from row highlighting and survives sorting.
+            select_item = QTableWidgetItem()
+            select_item.setCheckState(Qt.CheckState.Unchecked)
+            select_item.setData(Qt.ItemDataRole.UserRole, chapter.id)
+            select_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 0, select_item)
+
             # Index
             idx_item = QTableWidgetItem(str(chapter.index + 1))
+            idx_item.setData(Qt.ItemDataRole.UserRole, chapter.id)
+            idx_item.setData(Qt.ItemDataRole.DisplayRole, chapter.index + 1)
             idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 0, idx_item)
+            self.table.setItem(row, 1, idx_item)
 
             # Title
             title_item = QTableWidgetItem(chapter.title)
-            self.table.setItem(row, 1, title_item)
+            title_item.setData(Qt.ItemDataRole.UserRole, chapter.id)
+            self.table.setItem(row, 2, title_item)
 
             # Status with colour
             status_label = _STATUS_LABELS.get(chapter.status, chapter.status)
             status_item = QTableWidgetItem(status_label)
+            status_item.setData(Qt.ItemDataRole.UserRole, chapter.id)
             status_color = _STATUS_COLORS.get(chapter.status, "#718096")
             status_item.setForeground(QColor(status_color))
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 2, status_item)
+            self.table.setItem(row, 3, status_item)
 
             # Has translation / content
             if is_native_arabic:
@@ -97,16 +111,33 @@ class ChapterTableWidget(QWidget):
                 trans_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if chapter.translated_text:
                     trans_item.setForeground(QColor("#68d391"))
-            self.table.setItem(row, 3, trans_item)
+            trans_item.setData(Qt.ItemDataRole.UserRole, chapter.id)
+            self.table.setItem(row, 4, trans_item)
+
+        self.table.setSortingEnabled(True)
 
     def get_selected_chapter_ids(self, chapters: List[Chapter]) -> List[int]:
-        """Return IDs of currently selected rows."""
+        """Return IDs of highlighted rows for backwards compatibility."""
         rows = {idx.row() for idx in self.table.selectedIndexes()}
         result = []
         for row in rows:
-            if 0 <= row < len(chapters):
-                result.append(chapters[row].id)
-        return result
+            item = self.table.item(row, 1)
+            if item:
+                chapter_id = item.data(Qt.ItemDataRole.UserRole)
+                if chapter_id is not None:
+                    result.append(chapter_id)
+        return sorted(result)
+
+    def get_checked_chapter_ids(self) -> List[int]:
+        """Return IDs of chapters selected with their checkboxes."""
+        result = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                chapter_id = item.data(Qt.ItemDataRole.UserRole)
+                if chapter_id is not None:
+                    result.append(chapter_id)
+        return sorted(result)
 
     def get_stats(self, chapters: List[Chapter], is_native_arabic: bool = False) -> dict:
         total = len(chapters)

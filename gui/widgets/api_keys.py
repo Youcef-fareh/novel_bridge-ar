@@ -23,14 +23,22 @@ from typing import Dict, List
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QFormLayout,
+    QHeaderView,
     QScrollArea,
     QSizePolicy,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -121,7 +129,7 @@ def _read_env_file() -> Dict[str, str]:
     return result
 
 
-def _write_env_file(updates: Dict[str, str]) -> None:
+def _write_env_file(updates: Dict[str, str], remove_keys: set[str] | None = None) -> None:
     """
     Patch the .env file in-place: update matching KEY=... lines,
     append new keys that don't exist yet. Comments and blank lines
@@ -129,12 +137,15 @@ def _write_env_file(updates: Dict[str, str]) -> None:
     """
     lines: List[str] = []
     handled: set = set()
+    remove_keys = remove_keys or set()
 
     if ENV_FILE.exists():
         for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if stripped and not stripped.startswith("#") and "=" in stripped:
                 key = stripped.partition("=")[0].strip()
+                if key in remove_keys:
+                    continue
                 if key in updates:
                     lines.append(f"{key}={updates[key]}")
                     handled.add(key)
@@ -481,3 +492,310 @@ class ApiKeysWidget(QWidget):
                 f"Last saved  {datetime.now().strftime('%H:%M')}"
             ),
         )
+
+
+SETTING_TYPES = ("API Key", "Model", "Base URL", "Custom")
+
+
+class ApiSettingDialog(QDialog):
+    """Dialog for creating or editing one environment-backed setting."""
+
+    def __init__(self, entry: Dict[str, str] | None = None, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Change API Setting" if entry else "Add API Setting")
+        self.setMinimumWidth(480)
+        self._entry = entry or {}
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+
+        title = QLabel(self.windowTitle())
+        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #ffffff;")
+        layout.addWidget(title)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self.provider_input = QLineEdit(self._entry.get("provider", ""))
+        self.provider_input.setPlaceholderText("e.g. OpenRouter")
+        form.addRow("Provider:", self.provider_input)
+
+        self.type_combo = QComboBox()
+        self.type_combo.addItems(SETTING_TYPES)
+        current_type = self._entry.get("type", "API Key")
+        if current_type in SETTING_TYPES:
+            self.type_combo.setCurrentText(current_type)
+        self.type_combo.currentTextChanged.connect(self._on_type_changed)
+        form.addRow("Setting type:", self.type_combo)
+
+        self.env_input = QLineEdit(self._entry.get("env_var", ""))
+        self.env_input.setPlaceholderText("PROVIDER_API_KEY")
+        form.addRow("Environment variable:", self.env_input)
+
+        self.value_input = QLineEdit(self._entry.get("value", ""))
+        self.value_input.setPlaceholderText("Enter value")
+        form.addRow("Value:", self.value_input)
+        self._update_value_mode(self.type_combo.currentText())
+
+        layout.addLayout(form)
+
+        hint = QLabel("The setting is written to the project .env file after Save All.")
+        hint.setStyleSheet("color: #718096; font-size: 11px;")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._validate)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_type_changed(self, setting_type: str) -> None:
+        self._update_value_mode(setting_type)
+        if not self.env_input.text().strip() or self.env_input.text().strip() == self._generated_env_var():
+            self.env_input.setText(self._generated_env_var())
+
+    def _generated_env_var(self) -> str:
+        provider = re.sub(r"[^A-Za-z0-9]+", "_", self.provider_input.text().strip()).strip("_").upper()
+        suffix = {
+            "API Key": "API_KEY",
+            "Model": "MODEL",
+            "Base URL": "BASE_URL",
+            "Custom": "SETTING",
+        }[self.type_combo.currentText()]
+        return f"{provider}_{suffix}" if provider else suffix
+
+    def _update_value_mode(self, setting_type: str) -> None:
+        self.value_input.setEchoMode(
+            QLineEdit.EchoMode.Password
+            if setting_type == "API Key"
+            else QLineEdit.EchoMode.Normal
+        )
+
+    def _validate(self) -> None:
+        env_var = self.env_input.text().strip().upper()
+        if not self.provider_input.text().strip() or not self.value_input.text().strip():
+            QMessageBox.warning(self, "Missing value", "Provider and value are required.")
+            return
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", env_var):
+            QMessageBox.warning(self, "Invalid variable", "Use an environment name such as PROVIDER_API_KEY.")
+            return
+        self.accept()
+
+    def get_entry(self) -> Dict[str, str]:
+        return {
+            "provider": self.provider_input.text().strip(),
+            "type": self.type_combo.currentText(),
+            "env_var": self.env_input.text().strip().upper(),
+            "value": self.value_input.text().strip(),
+        }
+
+
+class ApiSettingsTableWidget(QWidget):
+    """Table-based API settings editor with .env reload and save support."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._entries: List[Dict[str, str]] = []
+        self._original_keys: set[str] = set()
+        self._setup_ui()
+        self._load_from_env()
+
+    def _setup_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        header = QWidget()
+        header.setStyleSheet("background: #1a1d27; border-bottom: 1px solid #2d3748;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(20, 14, 20, 14)
+        title = QLabel("API Providers and Keys")
+        title.setStyleSheet("font-size: 17px; font-weight: 700; color: #ffffff;")
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+
+        self.btn_add = QPushButton("＋ Add")
+        self.btn_add.setObjectName("btn_success")
+        self.btn_add.clicked.connect(self._add_setting)
+        header_layout.addWidget(self.btn_add)
+
+        self.btn_change = QPushButton("✎ Change")
+        self.btn_change.setObjectName("btn_secondary")
+        self.btn_change.setEnabled(False)
+        self.btn_change.clicked.connect(self._change_setting)
+        header_layout.addWidget(self.btn_change)
+
+        self.btn_delete = QPushButton("🗑 Delete")
+        self.btn_delete.setObjectName("btn_danger")
+        self.btn_delete.setEnabled(False)
+        self.btn_delete.clicked.connect(self._delete_setting)
+        header_layout.addWidget(self.btn_delete)
+
+        self.btn_reload = QPushButton("↺ Reload from .env")
+        self.btn_reload.setObjectName("btn_secondary")
+        self.btn_reload.setToolTip("Discard unsaved changes and reload the .env file")
+        self.btn_reload.clicked.connect(self._load_from_env)
+        header_layout.addWidget(self.btn_reload)
+
+        self.btn_save = QPushButton("💾 Save All")
+        self.btn_save.setObjectName("btn_primary")
+        self.btn_save.setEnabled(False)
+        self.btn_save.clicked.connect(self._save_to_env)
+        header_layout.addWidget(self.btn_save)
+        root.addWidget(header)
+
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Provider", "Type", "Environment Variable", "Value"])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setAlternatingRowColors(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table.itemSelectionChanged.connect(self._update_action_state)
+        root.addWidget(self.table, stretch=1)
+
+        footer = QHBoxLayout()
+        footer.setContentsMargins(20, 8, 20, 8)
+        self.footer_status = QLabel(f"File: {ENV_FILE}")
+        self.footer_status.setStyleSheet("color: #718096; font-size: 11px;")
+        footer.addWidget(self.footer_status)
+        footer.addStretch()
+        root.addLayout(footer)
+
+    @staticmethod
+    def _type_for_env(env_var: str) -> str:
+        if env_var.endswith("_API_KEY"):
+            return "API Key"
+        if env_var.endswith("_MODEL"):
+            return "Model"
+        if env_var.endswith("_BASE_URL"):
+            return "Base URL"
+        return "Custom"
+
+    @staticmethod
+    def _provider_for_env(env_var: str) -> str:
+        suffixes = ("_API_KEY", "_BASE_URL", "_MODEL")
+        for suffix in suffixes:
+            if env_var.endswith(suffix):
+                return env_var[:-len(suffix)].replace("_", " ").title()
+        return env_var.replace("_", " ").title()
+
+    def _load_from_env(self) -> None:
+        env = _read_env_file()
+        self._original_keys = set(env)
+        self._entries = []
+        known = set()
+        for env_var, _label, _hint, _is_secret in API_KEY_DEFS:
+            known.add(env_var)
+            self._entries.append({
+                "provider": self._provider_for_env(env_var),
+                "type": self._type_for_env(env_var),
+                "env_var": env_var,
+                "value": env.get(env_var, os.getenv(env_var, "")),
+            })
+        for env_var, value in env.items():
+            if env_var not in known and env_var.endswith(("_API_KEY", "_MODEL", "_BASE_URL")):
+                self._entries.append({
+                    "provider": self._provider_for_env(env_var),
+                    "type": self._type_for_env(env_var),
+                    "env_var": env_var,
+                    "value": value,
+                })
+        self._populate_table()
+        self._set_saved_status("Reloaded")
+
+    def _populate_table(self) -> None:
+        self.table.setRowCount(0)
+        for entry in self._entries:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            for column, value in enumerate((entry["provider"], entry["type"], entry["env_var"], entry["value"])):
+                display = _mask(value) if column == 3 and entry["type"] == "API Key" and value else (value or "Not set")
+                item = QTableWidgetItem(display)
+                item.setData(Qt.ItemDataRole.UserRole, entry["env_var"])
+                self.table.setItem(row, column, item)
+
+    def _selected_index(self) -> int:
+        rows = self.table.selectionModel().selectedRows()
+        return rows[0].row() if rows else -1
+
+    def _update_action_state(self) -> None:
+        enabled = self._selected_index() >= 0
+        self.btn_change.setEnabled(enabled)
+        self.btn_delete.setEnabled(enabled)
+
+    def _add_setting(self) -> None:
+        dialog = ApiSettingDialog(parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        entry = dialog.get_entry()
+        if any(item["env_var"] == entry["env_var"] for item in self._entries):
+            QMessageBox.warning(self, "Already exists", f"{entry['env_var']} is already in the table.")
+            return
+        self._entries.append(entry)
+        self._populate_table()
+        self._mark_dirty()
+
+    def _change_setting(self) -> None:
+        index = self._selected_index()
+        if index < 0:
+            return
+        dialog = ApiSettingDialog(self._entries[index], self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        entry = dialog.get_entry()
+        if any(i != index and item["env_var"] == entry["env_var"] for i, item in enumerate(self._entries)):
+            QMessageBox.warning(self, "Already exists", f"{entry['env_var']} is already in the table.")
+            return
+        self._entries[index] = entry
+        self._populate_table()
+        self._mark_dirty()
+
+    def _delete_setting(self) -> None:
+        index = self._selected_index()
+        if index < 0:
+            return
+        entry = self._entries[index]
+        reply = QMessageBox.question(self, "Delete setting", f"Remove {entry['env_var']} from the .env file?")
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._entries.pop(index)
+        self._populate_table()
+        self._mark_dirty()
+
+    def _mark_dirty(self) -> None:
+        self.btn_save.setEnabled(True)
+        self.footer_status.setText("Unsaved changes")
+        self.footer_status.setStyleSheet("color: #ed8936; font-size: 11px;")
+
+    def _set_saved_status(self, message: str) -> None:
+        self.btn_save.setEnabled(False)
+        self.footer_status.setText(f"{message} · {datetime.now().strftime('%H:%M:%S')}")
+        self.footer_status.setStyleSheet("color: #718096; font-size: 11px;")
+
+    def _save_to_env(self) -> None:
+        updates = {entry["env_var"]: entry["value"] for entry in self._entries}
+        removed = self._original_keys - set(updates)
+        try:
+            _write_env_file(updates, remove_keys=removed)
+        except OSError as exc:
+            QMessageBox.critical(self, "Save Failed", f"Could not write to .env file:\n{exc}")
+            return
+        for key, value in updates.items():
+            if value:
+                os.environ[key] = value
+            else:
+                os.environ.pop(key, None)
+        for key in removed:
+            os.environ.pop(key, None)
+        self._original_keys = set(updates)
+        self._set_saved_status("Saved")

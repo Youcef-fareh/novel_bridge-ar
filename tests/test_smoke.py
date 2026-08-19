@@ -29,6 +29,29 @@ def test_db_init(tmp_path, monkeypatch):
     assert (tmp_path / "test.db").exists()
 
 
+def test_interrupted_translation_is_retryable(tmp_path, monkeypatch):
+    from backend.models import ChapterStatus
+    import importlib
+    import backend.database as db_module
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "recovery.db"))
+    db_module = importlib.reload(db_module)
+    db_module.init_db()
+    novel = db_module.create_novel(
+        title="Recovery Test", source_url="http://test.com/recovery", source_site="novelfire"
+    )
+    chapter = db_module.upsert_chapter(novel.id, 0, "Chapter 1", "http://test.com/1")
+    db_module.update_chapter(
+        chapter.id, raw_text="Source text", status=ChapterStatus.translating
+    )
+
+    assert [c.id for c in db_module.get_pending_translation_chapters(novel.id)] == [chapter.id]
+    db_module.init_db()
+    recovered = db_module.get_chapters(novel.id)[0]
+    assert recovered.status == ChapterStatus.scraped
+    assert recovered.raw_text == "Source text"
+
+
 # ── Test: adapter registry ─────────────────────────────────────────────────────
 def test_adapter_registry():
     from backend.adapters.base import AdapterRegistry

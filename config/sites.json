@@ -10,8 +10,8 @@
       "chapter_title": ".chapter-title, h2.active, h1.chapter-title",
       "chapter_text": "#chapter-container, .chapter-content, .text-left"
     },
-    "request_delay_min": 0.8,
-    "request_delay_max": 2.5,
+    "request_delay_min": 0.1,
+    "request_delay_max": 0.35,
     "use_curl_cffi": true,
     "respect_robots_txt": false
   },
@@ -42,8 +42,8 @@
       "chapter_title": "h1, .chapter-title",
       "chapter_text": "#chapter-container, .chapter-content"
     },
-    "request_delay_min": 0.8,
-    "request_delay_max": 2.5,
+    "request_delay_min": 0.1,
+    "request_delay_max": 0.35,
     "use_curl_cffi": true,
     "respect_robots_txt": false
   },

@@ -34,6 +34,7 @@ _engine = create_engine(
 def init_db() -> None:
     """Create all tables and seed/sync glossary from config file."""
     SQLModel.metadata.create_all(_engine)
+    recover_interrupted_translations()
     sync_glossary_from_config(overwrite=False)
 
 
@@ -178,12 +179,30 @@ def update_chapter(chapter_id: int, **kwargs) -> Optional[Chapter]:
         return chapter
 
 
+def recover_interrupted_translations() -> int:
+    """Make chapters left in progress by a stopped process retryable."""
+    with Session(_engine) as session:
+        chapters = list(session.exec(
+            select(Chapter).where(Chapter.status == ChapterStatus.translating)
+        ).all())
+        for chapter in chapters:
+            chapter.status = ChapterStatus.scraped
+            chapter.updated_at = datetime.utcnow()
+            session.add(chapter)
+        session.commit()
+        return len(chapters)
+
+
 def get_pending_translation_chapters(novel_id: int) -> List[Chapter]:
     with Session(_engine) as session:
         return list(session.exec(
             select(Chapter).where(
                 Chapter.novel_id == novel_id,
-                Chapter.status.in_([ChapterStatus.scraped, ChapterStatus.failed])
+                Chapter.status.in_([
+                    ChapterStatus.scraped,
+                    ChapterStatus.translating,
+                    ChapterStatus.failed,
+                ])
             ).order_by(Chapter.index)
         ).all())
 

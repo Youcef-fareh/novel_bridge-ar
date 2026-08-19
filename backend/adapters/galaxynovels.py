@@ -18,7 +18,8 @@ except ImportError:
 
 from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
 from backend.adapters.fetcher import (
-    fetch_html, parse_attr, parse_chapter_body, parse_links, parse_text
+    fetch_html, fetch_html_playwright, parse_attr, parse_chapter_body,
+    parse_links, parse_text,
 )
 
 _SITE_ID = "galaxynovels"
@@ -36,6 +37,14 @@ def _split_selectors(value: str) -> list[str]:
     return [s.strip() for s in value.split(",") if s.strip()]
 
 
+async def _fetch_galaxy_html(url: str, wait_for: str = "") -> str:
+    """Use HTTP first, then Playwright when Galaxy blocks the request."""
+    try:
+        return await fetch_html(url, _SITE_ID)
+    except Exception:
+        return await fetch_html_playwright(url, wait_for)
+
+
 class GalaxyNovelsAdapter(SiteAdapter):
     site_id = _SITE_ID
     is_native_arabic = True
@@ -44,7 +53,7 @@ class GalaxyNovelsAdapter(SiteAdapter):
         return "galaxynovels.com" in url or "galaxynovel" in url
 
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
-        html = await fetch_html(novel_url, _SITE_ID)
+        html = await _fetch_galaxy_html(novel_url, "h1")
 
         title = parse_text(html, _split_selectors(_SEL.get("novel_title", "h1, .wor-single-title"))) or "Unknown Title"
         author = parse_text(html, _split_selectors(_SEL.get("novel_author", ".author, .wor-author a")))
@@ -67,6 +76,12 @@ class GalaxyNovelsAdapter(SiteAdapter):
 
         description = parse_text(html, _split_selectors(_SEL.get("novel_description", ".wor-single-summary__text, .description")))
 
+        if not title or title == "Unknown Title" or not description:
+            html = await fetch_html_playwright(novel_url, "h1")
+            title = parse_text(html, _split_selectors(_SEL.get("novel_title", "h1, .wor-single-title"))) or title
+            author = parse_text(html, _split_selectors(_SEL.get("novel_author", ".author, .wor-author a"))) or author
+            description = parse_text(html, _split_selectors(_SEL.get("novel_description", ".wor-single-summary__text, .description"))) or description
+
         return NovelMeta(
             title=title,
             author=author,
@@ -77,7 +92,7 @@ class GalaxyNovelsAdapter(SiteAdapter):
         )
 
     async def get_chapter_list(self, novel_url: str) -> List[ChapterRef]:
-        html = await fetch_html(novel_url, _SITE_ID)
+        html = await _fetch_galaxy_html(novel_url, ".wor-novel-chapters-list, [data-index-url]")
         
         refs: list[ChapterRef] = []
         seen_urls = set()
@@ -142,12 +157,45 @@ class GalaxyNovelsAdapter(SiteAdapter):
                 for i, r in enumerate(refs):
                     r.index = i
 
+        if not refs:
+            html = await fetch_html_playwright(novel_url, ".wor-novel-chapters-list, [data-index-url]")
+            tree = HTMLParser(html) if _SELECTOLAX_AVAILABLE else None
+            if tree:
+                container = tree.css_first(".wor-novel-chapters-wrap, [data-index-url]")
+                index_url = container.attributes.get("data-index-url") if container else ""
+                if index_url:
+                    index_html = await fetch_html_playwright(index_url)
+                    try:
+                        data = json.loads(index_html)
+                        raw_chapters = data.get("chapters", [])
+                        for item in raw_chapters:
+                            ch_url = item.get("url")
+                            if ch_url and ch_url not in seen_urls:
+                                label = item.get("label", "")
+                                title_extra = item.get("title", "")
+                                refs.append(ChapterRef(
+                                    index=len(refs),
+                                    title=f"{label} {title_extra}".strip() or f"Chapter {len(refs) + 1}",
+                                    source_url=ch_url,
+                                ))
+                    except (TypeError, ValueError):
+                        pass
+                if not refs:
+                    selectors = _split_selectors(_SEL.get("chapter_list", ".wor-novel-chapters-list a, .wor-novel-chapter-item a"))
+                    links = parse_links(html, selectors, base_url=_BASE)
+                    for title, href in links:
+                        if "/chapter" in href and href not in seen_urls:
+                            seen_urls.add(href)
+                            refs.append(ChapterRef(index=len(refs), title=title or f"Chapter {len(refs) + 1}", source_url=href))
         return refs
 
     async def get_chapter_text(self, chapter_url: str) -> str:
-        html = await fetch_html(chapter_url, _SITE_ID)
+        html = await _fetch_galaxy_html(chapter_url, ".wor-chapter-body, .chapter-content, article")
         selectors = _split_selectors(_SEL.get("chapter_text", ".wor-chapter-body, .chapter-content, #chapter-container, article"))
         text = parse_chapter_body(html, selectors)
         if not text:
             text = parse_text(html, [".wor-chapter-body", ".chapter-content", "article", "main"])
+        if not text:
+            html = await fetch_html_playwright(chapter_url, ".wor-chapter-body, .chapter-content, article")
+            text = parse_chapter_body(html, selectors) or parse_text(html, [".wor-chapter-body", ".chapter-content", "article", "main"])
         return text or ""

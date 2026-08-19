@@ -1,7 +1,4 @@
-"""
-NovelBridge — Shared fetch helper used by all site adapters.
-Implements the escalating fetch strategy: httpx → curl_cffi → (playwright future).
-"""
+"""Shared fetch and parsing helpers used by all site adapters."""
 from __future__ import annotations
 
 import asyncio
@@ -78,6 +75,33 @@ async def fetch_html(url: str, site_id: str = "") -> str:
             return resp.text
 
     raise RuntimeError(f"Failed to fetch {url}")
+
+
+async def fetch_html_playwright(url: str, wait_for: str = "") -> str:
+    """Render a JavaScript page in Chromium and return its final HTML."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "GalaxyNovels needs Playwright. Install dependencies, then run "
+            "'playwright install chromium'."
+        ) from exc
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True)
+        try:
+            page = await browser.new_page(user_agent=_HEADERS["User-Agent"])
+            await page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+            if wait_for:
+                try:
+                    await page.wait_for_selector(wait_for, timeout=15_000)
+                except Exception:
+                    pass
+            else:
+                await page.wait_for_timeout(1_000)
+            return await page.content()
+        finally:
+            await browser.close()
 
 
 def parse_text(html: str, css_selectors: list[str]) -> Optional[str]:

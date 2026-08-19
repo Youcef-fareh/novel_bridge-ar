@@ -31,9 +31,9 @@ from backend.adapters.novelphoenix import NovelPhoenixAdapter
 from backend.adapters.wtrlab import WTRLabAdapter
 from backend.database import (
     create_novel, delete_novel, get_all_novels, get_chapters,
-    get_novel, init_db, update_novel,
+    get_novel, init_db, update_chapter, update_novel,
 )
-from backend.models import Chapter, Novel, NovelStatus
+from backend.models import Chapter, ChapterStatus, Novel, NovelStatus
 from backend.pipeline import (
     JobControl, run_epub_job, run_scrape_job, run_translation_job,
 )
@@ -42,7 +42,7 @@ from backend.translation import (
     PROVIDER_MODELS,
     ProviderFailureError,
 )
-from gui.widgets.api_keys import ApiKeysWidget
+from gui.widgets.api_keys import ApiSettingsTableWidget
 from gui.widgets.chapter_table import ChapterTableWidget
 from gui.widgets.glossary_editor import GlossaryEditorWidget
 from gui.widgets.novel_list import NovelListWidget
@@ -144,6 +144,7 @@ class NovelDetailPanel(QWidget):
 
     delete_requested = pyqtSignal(int)
     open_api_keys_requested = pyqtSignal()
+    progress_requested = pyqtSignal(int, int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -152,6 +153,7 @@ class NovelDetailPanel(QWidget):
         self._thread_pool = QThreadPool.globalInstance()
         self._job_control: Optional[JobControl] = None
         self._setup_ui()
+        self.progress_requested.connect(self._on_progress)
         self._load_provider_settings()
 
     def _setup_ui(self):
@@ -263,6 +265,12 @@ class NovelDetailPanel(QWidget):
         self.btn_translate_sel.setObjectName("btn_secondary")
         self.btn_translate_sel.clicked.connect(self._on_translate_selected)
         btn_row.addWidget(self.btn_translate_sel)
+
+        self.btn_delete_translation = QPushButton("🗑 Delete Translation")
+        self.btn_delete_translation.setObjectName("btn_danger")
+        self.btn_delete_translation.setToolTip("Delete translations for checked chapters; scraped source text is kept")
+        self.btn_delete_translation.clicked.connect(self._on_delete_translation)
+        btn_row.addWidget(self.btn_delete_translation)
 
         self.btn_epub = QPushButton("📕 Build EPUB")
         self.btn_epub.setObjectName("btn_success")
@@ -408,10 +416,12 @@ class NovelDetailPanel(QWidget):
             # Hide translation buttons since content is already in Arabic
             self.btn_translate.setVisible(False)
             self.btn_translate_sel.setVisible(False)
+            self.btn_delete_translation.setVisible(False)
             self.stat_trans.findChild(QLabel, "").setText("Ready") if hasattr(self.stat_trans, "findChild") else None
         else:
             self.btn_translate.setVisible(True)
             self.btn_translate_sel.setVisible(True)
+            self.btn_delete_translation.setVisible(True)
 
         # Clean status display (e.g. "scraped" instead of "NovelStatus.scraped")
         status_val = self._novel.status.value if hasattr(self._novel.status, "value") else str(self._novel.status)
@@ -504,7 +514,7 @@ class NovelDetailPanel(QWidget):
         async def coro():
             return await run_scrape_job(
                 novel_id,
-                progress_cb=lambda d, t, m: self._on_progress(d, t, m),
+                progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
 
@@ -536,7 +546,7 @@ class NovelDetailPanel(QWidget):
                 novel_id,
                 provider_name=provider_name,
                 model_name=model_name,
-                progress_cb=lambda d, t, m: self._on_progress(d, t, m),
+                progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
 
@@ -549,9 +559,9 @@ class NovelDetailPanel(QWidget):
     def _on_translate_selected(self) -> None:
         if not self._novel:
             return
-        chapter_ids = self.chapter_table.get_selected_chapter_ids(self._chapters)
+        chapter_ids = self.chapter_table.get_checked_chapter_ids()
         if not chapter_ids:
-            QMessageBox.information(self, "Selection", "Please select chapters to translate.")
+            QMessageBox.information(self, "Selection", "Please check the chapters you want to translate.")
             return
         self._set_busy(True, f"Translating {len(chapter_ids)} selected chapters…")
         self._job_control = JobControl()
@@ -566,7 +576,7 @@ class NovelDetailPanel(QWidget):
                 chapter_ids=chapter_ids,
                 provider_name=provider_name,
                 model_name=model_name,
-                progress_cb=lambda d, t, m: self._on_progress(d, t, m),
+                progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
 
@@ -575,6 +585,37 @@ class NovelDetailPanel(QWidget):
         worker.signals.cancelled.connect(self._on_job_cancelled)
         worker.signals.error.connect(self._on_error)
         self._thread_pool.start(worker)
+
+    def _on_delete_translation(self) -> None:
+        if not self._novel:
+            return
+        chapter_ids = self.chapter_table.get_checked_chapter_ids()
+        if not chapter_ids:
+            QMessageBox.information(self, "Selection", "Please check chapters whose translation you want to delete.")
+            return
+
+        selected = [chapter for chapter in self._chapters if chapter.id in chapter_ids]
+        translated = [chapter for chapter in selected if chapter.translated_text]
+        if not translated:
+            QMessageBox.information(self, "Delete Translation", "None of the checked chapters has a translation.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Translation",
+            f"Delete translations for {len(translated)} checked chapter(s)?\n\n"
+            "The scraped source chapters will be kept.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        for chapter in translated:
+            status = ChapterStatus.scraped if chapter.raw_text and chapter.raw_text.strip() else ChapterStatus.pending
+            update_chapter(chapter.id, translated_text=None, status=status)
+
+        self.load_novel(self._novel.id)
+        self.status_label.setText(f"🗑 Deleted {len(translated)} translation(s). Source chapters kept.")
 
     def _on_translate_done(self, _) -> None:
         self._set_busy(False)
@@ -591,7 +632,7 @@ class NovelDetailPanel(QWidget):
         async def coro():
             job, path = await run_epub_job(
                 novel_id,
-                progress_cb=lambda d, t, m: self._on_progress(d, t, m),
+                progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
             )
             return str(path)
 
@@ -805,7 +846,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         # ── API Key Management (takes the bulk of the space) ─────────────────
-        self.api_keys_widget = ApiKeysWidget()
+        self.api_keys_widget = ApiSettingsTableWidget()
         layout.addWidget(self.api_keys_widget, stretch=1)
 
         # ── Collapsed info section ────────────────────────────────────────────

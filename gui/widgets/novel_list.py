@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QLineEdit,
     QVBoxLayout, QWidget,
 )
 
@@ -42,6 +42,12 @@ class NovelListWidget(QWidget):
         header.setStyleSheet("font-size: 15px; font-weight: 700; color: #e2e8f0; padding: 8px 4px 4px 4px;")
         layout.addWidget(header)
 
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search novels by title or author…")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.textChanged.connect(self._filter_novels)
+        layout.addWidget(self.search_input)
+
         self.list_widget = QListWidget()
         self.list_widget.setAlternatingRowColors(False)
         self.list_widget.itemClicked.connect(self._on_item_clicked)
@@ -51,8 +57,15 @@ class NovelListWidget(QWidget):
 
     def set_novels(self, novels: List[Novel]) -> None:
         self._novels = novels
+        self._filter_novels(self.search_input.text())
+
+    def _filter_novels(self, query: str) -> None:
         self.list_widget.clear()
-        for novel in novels:
+        normalized_query = query.strip().casefold()
+        for novel in self._novels:
+            searchable = f"{novel.title} {novel.author or ''}".casefold()
+            if normalized_query and normalized_query not in searchable:
+                continue
             emoji = _STATUS_EMOJI.get(novel.status, "📖")
             item = QListWidgetItem(f"{emoji}  {novel.title}")
             item.setData(Qt.ItemDataRole.UserRole, novel.id)
