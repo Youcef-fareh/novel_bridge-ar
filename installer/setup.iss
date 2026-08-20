@@ -49,8 +49,8 @@ SetupIconFile={#MyAppIcon}
 ; MinVersion=10.0.0                              ; Windows 10+
 
 ; ── Privileges ────────────────────────────────────────────────────────────
-PrivilegesRequired=lowest                     
-;PrivilegesRequiredOverridesAllowed=dialog    
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

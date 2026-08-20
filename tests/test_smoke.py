@@ -249,6 +249,18 @@ def test_provider_failure_error():
     assert "switch" in str(err).lower()
 
 
+def test_rate_limit_error_detection():
+    from backend.pipeline import _is_rate_limit_error
+
+    class Http429Error(Exception):
+        status_code = 429
+
+    assert _is_rate_limit_error(Http429Error("provider rejected request"))
+    assert _is_rate_limit_error(RuntimeError("HTTP 429 Too Many Requests"))
+    assert not _is_rate_limit_error(RuntimeError("HTTP 401 Invalid API key"))
+    assert not _is_rate_limit_error(RuntimeError("Model not found"))
+
+
 def test_gemini_provider_uses_instance_key(monkeypatch):
     import sys
     import types
@@ -301,6 +313,7 @@ async def test_translation_pipeline_failure_stops_and_suggests(tmp_path, monkeyp
     from backend.pipeline import run_translation_job
     from backend.translation import ProviderFailureError, TokenRouterProvider
     import backend.database as db_module
+    import backend.pipeline as pipeline_module
 
     monkeypatch.setenv("DB_PATH", str(tmp_path / "pipeline_test.db"))
     import importlib
@@ -318,14 +331,21 @@ async def test_translation_pipeline_failure_stops_and_suggests(tmp_path, monkeyp
     async def failing_translate(self, text, glossary, model=None):
         raise RuntimeError("TokenRouter API 429 Too Many Requests")
 
+    sleep_calls = []
+
+    async def fast_sleep(delay):
+        sleep_calls.append(delay)
+
     monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test-valid-key")
     monkeypatch.setattr(TokenRouterProvider, "translate_chapter", failing_translate)
+    monkeypatch.setattr(pipeline_module.asyncio, "sleep", fast_sleep)
 
     with pytest.raises(ProviderFailureError) as exc_info:
         await run_translation_job(novel.id, provider_name="tokenrouter")
 
     assert "TokenRouter" in str(exc_info.value) or "tokenrouter" in str(exc_info.value)
     assert "Suggestion" in str(exc_info.value) or "switch" in str(exc_info.value).lower()
+    assert 80.0 in sleep_calls
 
 
 # ── Test: OrcaRouter Provider ──────────────────────────────────────────────────

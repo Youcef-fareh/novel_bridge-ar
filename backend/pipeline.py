@@ -31,6 +31,17 @@ logger = logging.getLogger("novelbridge.pipeline")
 
 _MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT_JOBS", "3"))
 
+
+def _is_rate_limit_error(error: Exception) -> bool:
+    """Return True only for provider rate-limit responses that need recovery time."""
+    response = getattr(error, "response", None)
+    status_code = getattr(error, "status_code", None) or getattr(response, "status_code", None)
+    if status_code == 429:
+        return True
+
+    message = str(error).lower()
+    return "429" in message or "too many requests" in message or "rate limit exceeded" in message
+
 # Each GUI worker owns a separate event loop. Keep one semaphore per loop.
 _semaphores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = weakref.WeakKeyDictionary()
 
@@ -206,6 +217,7 @@ async def run_translation_job(
     model_name: Optional[str] = None,
     progress_cb: Optional[ProgressCallback] = None,
     job_control: Optional[JobControl] = None,
+    request_cooldown_seconds: float = 0.0,
 ) -> Job:
     """
     Translate scraped chapters.
@@ -240,47 +252,76 @@ async def run_translation_job(
             f"Translating {total} chapters with {provider.provider_name.capitalize()}{target_model_info}…",
         )
 
-    consecutive_failures = 0
-    total_failures = 0
+    request_cooldown_seconds = max(0.0, float(request_cooldown_seconds))
+    provider_error_wait_seconds = 80.0
     last_error_msg = ""
     stop_event = asyncio.Event()
+    request_lock = asyncio.Lock()
+    last_request_finished_at = 0.0
 
     async def translate_one(chapter: Chapter) -> None:
-        nonlocal consecutive_failures, total_failures, last_error_msg
+        nonlocal last_error_msg, last_request_finished_at
         if stop_event.is_set():
             return
         if job_control:
             await job_control.check()
 
-        async with _get_semaphore():
+        async with _get_semaphore(), request_lock:
             if stop_event.is_set():
                 return
-            try:
-                if job_control:
-                    await job_control.check()
-                update_chapter(chapter.id, status=ChapterStatus.translating)
-                translated = await provider.translate_chapter(
-                    chapter.raw_text or "",
-                    glossary,
-                    model=model_name,
-                )
-                update_chapter(chapter.id, translated_text=translated, status=ChapterStatus.translated)
-                consecutive_failures = 0  # Reset on success
-            except asyncio.CancelledError:
-                update_chapter(chapter.id, status=ChapterStatus.scraped)
-                raise
-            except Exception as e:
-                consecutive_failures += 1
-                total_failures += 1
-                last_error_msg = str(e)
-                logger.warning(
-                    f"Failed to translate chapter {chapter.index} with {provider.provider_name}: {e}"
-                )
-                update_chapter(chapter.id, status=ChapterStatus.failed)
 
-                # Stop if consecutive failures threshold (2) or total failures threshold (3) is reached
-                if consecutive_failures >= 2 or total_failures >= 3:
+            for attempt in (1, 2):
+                try:
+                    if job_control:
+                        await job_control.check()
+                    elapsed = asyncio.get_running_loop().time() - last_request_finished_at
+                    if elapsed < request_cooldown_seconds:
+                        await asyncio.sleep(request_cooldown_seconds - elapsed)
+                    update_chapter(chapter.id, status=ChapterStatus.translating)
+                    translated = await provider.translate_chapter(
+                        chapter.raw_text or "",
+                        glossary,
+                        model=model_name,
+                    )
+                    last_request_finished_at = asyncio.get_running_loop().time()
+                    update_chapter(chapter.id, translated_text=translated, status=ChapterStatus.translated)
+                    return
+                except asyncio.CancelledError:
+                    update_chapter(chapter.id, status=ChapterStatus.scraped)
+                    raise
+                except Exception as e:
+                    last_request_finished_at = asyncio.get_running_loop().time()
+                    last_error_msg = str(e)
+                    logger.warning(
+                        f"Failed to translate chapter {chapter.index} with {provider.provider_name} "
+                        f"(attempt {attempt}/2): {e}"
+                    )
+                    update_chapter(chapter.id, status=ChapterStatus.failed)
+
+                    if attempt == 1 and _is_rate_limit_error(e):
+                        if progress_cb:
+                            progress_cb(
+                                done,
+                                total,
+                                f"Provider error on chapter {chapter.index}. Retrying in "
+                                f"{int(provider_error_wait_seconds)} seconds…",
+                            )
+                        await asyncio.sleep(provider_error_wait_seconds)
+                        continue
+
+                    if attempt == 1:
+                        continue
+
                     stop_event.set()
+                    raise ProviderFailureError(
+                        provider=provider.provider_name,
+                        error_detail=last_error_msg,
+                        suggestion=(
+                            f"Translation stopped after the provider failed twice.\n\n"
+                            f"Provider error: {last_error_msg}\n\n"
+                            f"Suggestion: check the API key, model, or quota, then switch to another provider."
+                        ),
+                    )
 
     done = 0
     try:

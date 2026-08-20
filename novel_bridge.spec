@@ -104,6 +104,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,          # no console window — pure GUI app
+    uac_admin=True,         # request administrator rights when the app starts
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

@@ -936,8 +936,13 @@ class ProviderSettingsWidget(QWidget):
                 self._env[key] = os.environ[key]
         self._models = {}
         for _name, prefix, _key, _base, _default_base in self._provider_groups:
-            saved = self._env.get(f"{prefix}_MODELS", "")
-            self._models[prefix] = [m for m in saved.split(",") if m.strip()] if saved else self._known_models(prefix)
+            models_key = f"{prefix}_MODELS"
+            saved = self._env.get(models_key, "")
+            self._models[prefix] = (
+                [m for m in saved.split(",") if m.strip()]
+                if models_key in self._env
+                else self._known_models(prefix)
+            )
         self._render_cards()
         self.footer_status.setText(f"Loaded from .env · {datetime.now().strftime('%H:%M:%S')}")
 
@@ -1055,6 +1060,7 @@ class ProviderSettingsWidget(QWidget):
         row.addWidget(dot)
         name = QLabel(model)
         name.setStyleSheet("color: #e2e8f0; font-weight: 600;")
+        name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         row.addWidget(name, stretch=1)
         role = QLabel("Translation")
         role.setStyleSheet("color: #718096;")
@@ -1067,6 +1073,12 @@ class ProviderSettingsWidget(QWidget):
         edit.setObjectName("btn_secondary")
         edit.clicked.connect(lambda _, p=prefix, m=model: self._edit_model(p, m))
         row.addWidget(edit)
+        delete = QPushButton("Delete")
+        delete.setObjectName("btn_danger")
+        delete.setMinimumWidth(68)
+        delete.setToolTip("Remove this model from the provider")
+        delete.clicked.connect(lambda _, p=prefix, m=model: self._delete_model(p, m))
+        row.addWidget(delete)
         layout.addLayout(row)
 
     def _set_env(self, key: str, value: str) -> None:
@@ -1087,6 +1099,24 @@ class ProviderSettingsWidget(QWidget):
             models[models.index(old_model)] = model.strip()
             self._render_cards()
             self.footer_status.setText("Unsaved changes")
+
+    def _delete_model(self, prefix: str, model: str) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Remove Model",
+            f"Remove '{model}' from {prefix}?\n\nThis change takes effect after Save All.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        models = self._models[prefix]
+        models.remove(model)
+        default_key = f"{prefix}_MODEL"
+        if self._env.get(default_key) == model:
+            self._env[default_key] = models[0] if models else ""
+        self._render_cards()
+        self.footer_status.setText("Unsaved changes")
 
     def _edit_key(self, key_var: str) -> None:
         entry = {"provider": key_var.split("_")[0].title(), "type": "API Key", "env_var": key_var, "value": self._env.get(key_var, "")}

@@ -18,10 +18,10 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
+    QApplication, QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QProgressBar, QPushButton, QSplitter,
-    QStatusBar, QTabWidget, QVBoxLayout, QWidget,
+    QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton, QSplitter,
+    QSpinBox, QStatusBar, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from backend.adapters.base import AdapterRegistry
@@ -31,7 +31,7 @@ from backend.adapters.novelphoenix import NovelPhoenixAdapter
 from backend.adapters.wtrlab import WTRLabAdapter
 from backend.database import (
     create_novel, delete_novel, get_all_novels, get_chapters,
-    get_novel, init_db, update_chapter, update_novel,
+    get_novel, get_pending_translation_chapters, init_db, update_chapter, update_novel,
 )
 from backend.models import Chapter, ChapterStatus, Novel, NovelStatus
 from backend.pipeline import (
@@ -142,6 +142,101 @@ class AddNovelDialog(QDialog):
         return self.url_input.text().strip()
 
 
+class SchedulerDialog(QDialog):
+    """Choose an ordered set of novels and a chapter batch size for scheduling."""
+
+    def __init__(self, novels: List[Novel], parent=None):
+        super().__init__(parent)
+        self._novels = {novel.id: novel for novel in novels}
+        self.setWindowTitle("Schedule Novel Translation")
+        self.setMinimumSize(620, 520)
+        self._setup_ui(novels)
+
+    def _setup_ui(self, novels: List[Novel]) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+
+        title = QLabel("Schedule translations in order")
+        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")
+        layout.addWidget(title)
+        hint = QLabel(
+            "Select novels, arrange their order, and export an EPUB after each novel's batch finishes."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #a0aec0; font-size: 12px;")
+        layout.addWidget(hint)
+
+        self.novel_list = QListWidget()
+        self.novel_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.novel_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.novel_list.setToolTip("Drag rows or use Up and Down to set the schedule order")
+        for novel in novels:
+            pending = len(get_pending_translation_chapters(novel.id))
+            item = QListWidgetItem(f"{novel.title}  ·  {pending} pending chapter(s)")
+            item.setData(Qt.ItemDataRole.UserRole, novel.id)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.novel_list.addItem(item)
+        layout.addWidget(self.novel_list, stretch=1)
+
+        order_row = QHBoxLayout()
+        order_row.addWidget(QLabel("Order:"))
+        self.btn_up = QPushButton("↑ Move Up")
+        self.btn_down = QPushButton("↓ Move Down")
+        self.btn_up.clicked.connect(lambda: self._move_item(-1))
+        self.btn_down.clicked.connect(lambda: self._move_item(1))
+        order_row.addWidget(self.btn_up)
+        order_row.addWidget(self.btn_down)
+        order_row.addStretch()
+        layout.addLayout(order_row)
+
+        options = QFrame()
+        options.setStyleSheet("QFrame { background: #151824; border: 1px solid #2d3748; border-radius: 8px; }")
+        options_layout = QFormLayout(options)
+        options_layout.setContentsMargins(12, 8, 12, 8)
+        self.chapter_limit = QSpinBox()
+        self.chapter_limit.setRange(0, 1000000)
+        self.chapter_limit.setValue(1000)
+        self.chapter_limit.setSpecialValueText("All pending")
+        self.chapter_limit.setToolTip("Maximum pending chapters translated for each novel; 0 means all")
+        options_layout.addRow("Chapter limit per novel:", self.chapter_limit)
+        layout.addWidget(options)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Create Schedule")
+        buttons.accepted.connect(self._validate)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _move_item(self, direction: int) -> None:
+        row = self.novel_list.currentRow()
+        target = row + direction
+        if row < 0 or target < 0 or target >= self.novel_list.count():
+            return
+        item = self.novel_list.takeItem(row)
+        self.novel_list.insertItem(target, item)
+        self.novel_list.setCurrentRow(target)
+
+    def _validate(self) -> None:
+        if not self.selected_novel_ids():
+            QMessageBox.warning(self, "Empty Schedule", "Select at least one novel to schedule.")
+            return
+        self.accept()
+
+    def selected_novel_ids(self) -> List[int]:
+        result = []
+        for row in range(self.novel_list.count()):
+            item = self.novel_list.item(row)
+            if item.checkState() == Qt.CheckState.Checked:
+                result.append(item.data(Qt.ItemDataRole.UserRole))
+        return result
+
+    def get_values(self) -> tuple[List[int], int]:
+        return self.selected_novel_ids(), self.chapter_limit.value()
+
+
 # ── Novel Detail Panel ─────────────────────────────────────────────────────────
 
 class NovelDetailPanel(QWidget):
@@ -232,6 +327,45 @@ class NovelDetailPanel(QWidget):
         self.combo_model.setStyleSheet("padding: 4px 8px; font-size: 12px;")
         self.combo_model.currentTextChanged.connect(self._on_model_changed)
         prov_layout.addWidget(self.combo_model, stretch=1)
+
+        cooldown_box = QFrame()
+        cooldown_box.setObjectName("cooldownBox")
+        cooldown_box.setStyleSheet("""
+            #cooldownBox {
+                background: #10131c;
+                border: 1px solid #3b465b;
+                border-radius: 6px;
+            }
+            #cooldownBox QLabel { color: #e2e8f0; font-size: 11px; }
+            #cooldownBox QSpinBox {
+                background: #1d2432;
+                border: 1px solid #4a5568;
+                border-radius: 4px;
+                color: #ffffff;
+                padding: 3px 6px;
+                min-width: 78px;
+            }
+        """)
+        cooldown_layout = QVBoxLayout(cooldown_box)
+        cooldown_layout.setContentsMargins(8, 4, 8, 4)
+        cooldown_layout.setSpacing(2)
+        cooldown_title = QLabel("REQUEST GAP")
+        cooldown_title.setStyleSheet("font-weight: 700; letter-spacing: 0.06em;")
+        cooldown_layout.addWidget(cooldown_title)
+
+        cooldown_controls = QHBoxLayout()
+        cooldown_controls.setSpacing(4)
+        self.spin_request_cooldown = QSpinBox()
+        self.spin_request_cooldown.setRange(0, 3600)
+        self.spin_request_cooldown.setSuffix(" s")
+        self.spin_request_cooldown.setToolTip("Minimum delay between provider requests")
+        self.spin_request_cooldown.valueChanged.connect(self._on_request_cooldown_changed)
+        cooldown_controls.addWidget(self.spin_request_cooldown)
+        cooldown_hint = QLabel("between requests")
+        cooldown_hint.setStyleSheet("color: #718096; font-size: 10px;")
+        cooldown_controls.addWidget(cooldown_hint)
+        cooldown_layout.addLayout(cooldown_controls)
+        prov_layout.addWidget(cooldown_box)
 
         self.btn_open_keys = QPushButton("🔑 API Keys")
         self.btn_open_keys.setObjectName("btn_secondary")
@@ -440,6 +574,8 @@ class NovelDetailPanel(QWidget):
         settings = QSettings("NovelBridge", "Settings")
         saved_provider = settings.value("selected_provider", "tokenrouter")
         saved_model = settings.value("selected_model", "")
+        saved_cooldown = settings.value("request_cooldown_seconds", 0, type=int)
+        self.spin_request_cooldown.setValue(max(0, min(3600, saved_cooldown)))
 
         idx = self.combo_provider.findData(saved_provider)
         if idx >= 0:
@@ -458,6 +594,10 @@ class NovelDetailPanel(QWidget):
     def _on_model_changed(self, text: str) -> None:
         settings = QSettings("NovelBridge", "Settings")
         settings.setValue("selected_model", text.strip())
+
+    def _on_request_cooldown_changed(self, value: int) -> None:
+        settings = QSettings("NovelBridge", "Settings")
+        settings.setValue("request_cooldown_seconds", value)
 
     def _populate_models_for_current_provider(self, custom_model: Optional[str] = None) -> None:
         provider_key = self.combo_provider.currentData() or "tokenrouter"
@@ -479,6 +619,9 @@ class NovelDetailPanel(QWidget):
 
     def get_selected_model(self) -> str:
         return self.combo_model.currentText().strip()
+
+    def get_request_cooldown(self) -> int:
+        return self.spin_request_cooldown.value()
 
     def _set_busy(self, busy: bool, message: str = "") -> None:
         self.progress_bar.setVisible(busy)
@@ -545,12 +688,14 @@ class NovelDetailPanel(QWidget):
         novel_id = self._novel.id
         provider_name = self.get_selected_provider()
         model_name = self.get_selected_model()
+        request_cooldown_seconds = self.get_request_cooldown()
 
         async def coro():
             return await run_translation_job(
                 novel_id,
                 provider_name=provider_name,
                 model_name=model_name,
+                request_cooldown_seconds=request_cooldown_seconds,
                 progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
@@ -574,6 +719,7 @@ class NovelDetailPanel(QWidget):
         novel_id = self._novel.id
         provider_name = self.get_selected_provider()
         model_name = self.get_selected_model()
+        request_cooldown_seconds = self.get_request_cooldown()
 
         async def coro():
             return await run_translation_job(
@@ -581,6 +727,7 @@ class NovelDetailPanel(QWidget):
                 chapter_ids=chapter_ids,
                 provider_name=provider_name,
                 model_name=model_name,
+                request_cooldown_seconds=request_cooldown_seconds,
                 progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
@@ -766,6 +913,12 @@ class MainWindow(QMainWindow):
         self.btn_api_server.clicked.connect(self._on_start_api_server)
         h_layout.addWidget(self.btn_api_server)
 
+        self.btn_scheduler = QPushButton("⏱ Schedule Translations")
+        self.btn_scheduler.setObjectName("btn_secondary")
+        self.btn_scheduler.setToolTip("Queue novels in order, translate them, and export EPUB files")
+        self.btn_scheduler.clicked.connect(self._on_open_scheduler)
+        h_layout.addWidget(self.btn_scheduler)
+
         root.addWidget(header)
 
         # ── Tab widget ─────────────────────────────────────────────────────
@@ -900,6 +1053,10 @@ class MainWindow(QMainWindow):
         delete_action.triggered.connect(self._on_sidebar_delete)
         file_menu.addAction(delete_action)
 
+        schedule_action = QAction("Schedule Translations…", self)
+        schedule_action.triggered.connect(self._on_open_scheduler)
+        file_menu.addAction(schedule_action)
+
         file_menu.addSeparator()
 
         quit_action = QAction("Quit", self)
@@ -976,6 +1133,101 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to start API server:\n{e}")
+
+    def _on_open_scheduler(self) -> None:
+        novels = get_all_novels()
+        if not novels:
+            QMessageBox.information(self, "Schedule Translations", "Add at least one novel to the library first.")
+            return
+
+        dialog = SchedulerDialog(novels, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        novel_ids, chapter_limit = dialog.get_values()
+        ordered_novels = [get_novel(novel_id) for novel_id in novel_ids]
+        ordered_novels = [novel for novel in ordered_novels if novel]
+        summary = "\n".join(
+            f"{index}. {novel.title}"
+            for index, novel in enumerate(ordered_novels, start=1)
+        )
+        limit_text = "all pending chapters" if chapter_limit == 0 else f"up to {chapter_limit} chapters per novel"
+        reply = QMessageBox.question(
+            self,
+            "Confirm Translation Schedule",
+            f"Start this schedule in the listed order?\n\n{summary}\n\n"
+            f"Batch: {limit_text}\nAn EPUB will be exported after each novel.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._start_scheduler(ordered_novels, chapter_limit)
+
+    def _start_scheduler(self, novels: List[Novel], chapter_limit: int) -> None:
+        panel = self.detail_panel
+        panel._set_busy(True, "Starting translation schedule…")
+        panel._job_control = JobControl()
+        job_control = panel._job_control
+        provider_name = panel.get_selected_provider()
+        model_name = panel.get_selected_model()
+        request_cooldown = panel.get_request_cooldown()
+
+        async def scheduler_coro():
+            completed = 0
+            for novel in novels:
+                await job_control.check()
+                pending = get_pending_translation_chapters(novel.id)
+                if chapter_limit:
+                    pending = pending[:chapter_limit]
+                if not pending:
+                    panel.progress_requested.emit(
+                        completed,
+                        len(novels),
+                        f"Skipping {novel.title}: no pending chapters.",
+                    )
+                    completed += 1
+                    continue
+
+                panel.progress_requested.emit(
+                    completed,
+                    len(novels),
+                    f"Translating {novel.title} ({len(pending)} chapter(s))…",
+                )
+                await run_translation_job(
+                    novel.id,
+                    chapter_ids=[chapter.id for chapter in pending],
+                    provider_name=provider_name,
+                    model_name=model_name,
+                    request_cooldown_seconds=request_cooldown,
+                    job_control=job_control,
+                    progress_cb=lambda _done, _total, message: panel.progress_requested.emit(
+                        completed, len(novels), f"{novel.title}: {message}"
+                    ),
+                )
+                await run_epub_job(
+                    novel.id,
+                    progress_cb=lambda _done, _total, message: panel.progress_requested.emit(
+                        completed, len(novels), f"{novel.title}: {message}"
+                    ),
+                )
+                completed += 1
+                panel.progress_requested.emit(completed, len(novels), f"Completed {novel.title}.")
+            return completed
+
+        worker = AsyncWorker(scheduler_coro)
+        worker.signals.finished.connect(self._on_scheduler_done)
+        worker.signals.cancelled.connect(panel._on_job_cancelled)
+        worker.signals.error.connect(panel._on_error)
+        worker.signals.progress.connect(panel._on_progress)
+        panel._thread_pool.start(worker)
+
+    def _on_scheduler_done(self, completed: int) -> None:
+        self.detail_panel._set_busy(False)
+        self.detail_panel.status_label.setText(f"✅ Schedule complete: {completed} novel(s) exported.")
+        self._refresh_novels()
+        if self.detail_panel._novel:
+            self.detail_panel.load_novel(self.detail_panel._novel.id)
 
     def _on_about(self) -> None:
         QMessageBox.about(
