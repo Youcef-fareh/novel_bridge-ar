@@ -24,7 +24,7 @@ datas += [("icon.ico", ".")]
 datas += [("config", "config")]
 
 # Collect all data files from known heavy packages
-for pkg in ("PyQt6", "sqlmodel", "uvicorn", "fastapi", "selectolax"):
+for pkg in ("PyQt6", "sqlmodel", "uvicorn", "fastapi", "selectolax", "playwright"):
     try:
         d, b, h = collect_all(pkg)
         datas     += d
@@ -49,6 +49,8 @@ hidden_imports = [
     # HTTP clients
     "httpx",
     "curl_cffi",
+    "playwright",
+    "playwright.async_api",
     # Parsers
     "selectolax.parser",
     "bs4",

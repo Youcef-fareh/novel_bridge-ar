@@ -45,7 +45,8 @@ pytest
 - Some sites require provider API keys for translation services.
 - Update configuration files in `config/` to match your target sources and glossary.
 - Output EPUBs are written under the `output/` directory.
+- See the [User Guide](docs/USER_GUIDE.md) for installation, configuration, translation, and troubleshooting steps.
 
 ## License
 
-This project is for local use and experimentation unless specified otherwise by the repository owner.
+This project is released under the [MIT License](LICENSE). The license applies to the source code only; third-party content and services remain subject to their own terms.

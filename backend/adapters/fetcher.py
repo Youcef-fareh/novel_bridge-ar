@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import random
+import sys
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -86,6 +88,18 @@ async def fetch_html_playwright(url: str, wait_for: str = "") -> str:
             "GalaxyNovels needs Playwright. Install dependencies, then run "
             "'playwright install chromium'."
         ) from exc
+
+    if getattr(sys, "frozen", False):
+        import playwright
+
+        bundled_browsers = (
+            Path(playwright.__file__).resolve().parent
+            / "driver"
+            / "package"
+            / ".local-browsers"
+        )
+        if bundled_browsers.exists():
+            os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(bundled_browsers))
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
