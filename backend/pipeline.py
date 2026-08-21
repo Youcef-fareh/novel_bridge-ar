@@ -235,7 +235,8 @@ async def run_translation_job(
 
     pending = get_pending_translation_chapters(novel_id)
     if chapter_ids:
-        pending = [c for c in pending if c.id in chapter_ids]
+        pending_by_id = {chapter.id: chapter for chapter in pending}
+        pending = [pending_by_id[chapter_id] for chapter_id in chapter_ids if chapter_id in pending_by_id]
 
     total = len(pending)
     if total == 0:

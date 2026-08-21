@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import List
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QKeyEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView, QHeaderView, QLabel,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -31,6 +31,49 @@ _STATUS_LABELS = {
 }
 
 
+class _ChapterIndexItem(QTableWidgetItem):
+    """Sort chapter numbers numerically instead of as text."""
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        left = self.data(Qt.ItemDataRole.DisplayRole)
+        right = other.data(Qt.ItemDataRole.DisplayRole)
+        try:
+            return int(left) < int(right)
+        except (TypeError, ValueError):
+            return super().__lt__(other)
+
+
+class _ChapterTable(QTableWidget):
+    """Table with keyboard selection shortcuts for chapter checkboxes."""
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        super().keyPressEvent(event)
+        navigation_keys = {
+            Qt.Key.Key_Up,
+            Qt.Key.Key_Down,
+            Qt.Key.Key_Left,
+            Qt.Key.Key_Right,
+        }
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier and event.key() in navigation_keys:
+            self._toggle_selected_rows()
+
+    def _toggle_selected_rows(self) -> None:
+        rows = {index.row() for index in self.selectedIndexes()}
+        if not rows and self.currentRow() >= 0:
+            rows.add(self.currentRow())
+        items = [self.item(row, 0) for row in rows]
+        items = [item for item in items if item is not None]
+        if not items:
+            return
+        new_state = (
+            Qt.CheckState.Unchecked
+            if all(item.checkState() == Qt.CheckState.Checked for item in items)
+            else Qt.CheckState.Checked
+        )
+        for item in items:
+            item.setCheckState(new_state)
+
+
 class ChapterTableWidget(QWidget):
     """Displays chapter list with status colour coding."""
 
@@ -43,7 +86,7 @@ class ChapterTableWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        self.table = QTableWidget(0, 5)
+        self.table = _ChapterTable(0, 5)
         self.table.setHorizontalHeaderLabels(["Select", "#", "Title", "Status", "Translation"])
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -92,7 +135,7 @@ class ChapterTableWidget(QWidget):
             self.table.setItem(row, 0, select_item)
 
             # Index
-            idx_item = QTableWidgetItem(str(chapter.index + 1))
+            idx_item = _ChapterIndexItem(str(chapter.index + 1))
             idx_item.setData(Qt.ItemDataRole.UserRole, chapter.id)
             idx_item.setData(Qt.ItemDataRole.DisplayRole, chapter.index + 1)
             idx_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -134,13 +177,15 @@ class ChapterTableWidget(QWidget):
         """Return IDs of highlighted rows for backwards compatibility."""
         rows = {idx.row() for idx in self.table.selectedIndexes()}
         result = []
-        for row in rows:
+        for row in range(self.table.rowCount()):
+            if row not in rows:
+                continue
             item = self.table.item(row, 1)
             if item:
                 chapter_id = item.data(Qt.ItemDataRole.UserRole)
                 if chapter_id is not None:
                     result.append(chapter_id)
-        return sorted(result)
+        return result
 
     def get_checked_chapter_ids(self) -> List[int]:
         """Return IDs of chapters selected with their checkboxes."""
@@ -151,7 +196,7 @@ class ChapterTableWidget(QWidget):
                 chapter_id = item.data(Qt.ItemDataRole.UserRole)
                 if chapter_id is not None:
                     result.append(chapter_id)
-        return sorted(result)
+            return result
 
     def get_stats(self, chapters: List[Chapter], is_native_arabic: bool = False) -> dict:
         total = len(chapters)

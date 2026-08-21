@@ -879,6 +879,8 @@ class AddProviderDialog(QDialog):
 class ProviderSettingsWidget(QWidget):
     """Provider-oriented API settings page."""
 
+    models_changed = pyqtSignal(dict)
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._env: Dict[str, str] = {}
@@ -938,13 +940,22 @@ class ProviderSettingsWidget(QWidget):
         for _name, prefix, _key, _base, _default_base in self._provider_groups:
             models_key = f"{prefix}_MODELS"
             saved = self._env.get(models_key, "")
-            self._models[prefix] = (
+            models = (
                 [m for m in saved.split(",") if m.strip()]
                 if models_key in self._env
                 else self._known_models(prefix)
             )
+            default_model = self._env.get(f"{prefix}_MODEL", "").strip()
+            if default_model and default_model not in models:
+                models.insert(0, default_model)
+            self._models[prefix] = models
         self._render_cards()
+        self.models_changed.emit(self.get_models())
         self.footer_status.setText(f"Loaded from .env · {datetime.now().strftime('%H:%M:%S')}")
+
+    def get_models(self) -> Dict[str, List[str]]:
+        """Return a copy of the configured provider models for other views."""
+        return {prefix.casefold(): list(models) for prefix, models in self._models.items()}
 
     @staticmethod
     def _known_models(prefix: str) -> List[str]:
@@ -1090,14 +1101,20 @@ class ProviderSettingsWidget(QWidget):
         if ok and model.strip():
             self._models.setdefault(prefix, []).append(model.strip())
             self._render_cards()
+            self.models_changed.emit(self.get_models())
             self.footer_status.setText("Unsaved changes")
 
     def _edit_model(self, prefix: str, old_model: str) -> None:
         model, ok = QInputDialog.getText(self, "Edit Model", "Model:", text=old_model)
         if ok and model.strip():
             models = self._models[prefix]
-            models[models.index(old_model)] = model.strip()
+            new_model = model.strip()
+            models[models.index(old_model)] = new_model
+            default_key = f"{prefix}_MODEL"
+            if self._env.get(default_key) == old_model:
+                self._env[default_key] = new_model
             self._render_cards()
+            self.models_changed.emit(self.get_models())
             self.footer_status.setText("Unsaved changes")
 
     def _delete_model(self, prefix: str, model: str) -> None:
@@ -1116,6 +1133,7 @@ class ProviderSettingsWidget(QWidget):
         if self._env.get(default_key) == model:
             self._env[default_key] = models[0] if models else ""
         self._render_cards()
+        self.models_changed.emit(self.get_models())
         self.footer_status.setText("Unsaved changes")
 
     def _edit_key(self, key_var: str) -> None:

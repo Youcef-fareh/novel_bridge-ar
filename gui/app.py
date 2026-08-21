@@ -248,6 +248,7 @@ class NovelDetailPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._configured_models = {}
         self._novel: Optional[Novel] = None
         self._chapters: List[Chapter] = []
         self._thread_pool = QThreadPool.globalInstance()
@@ -602,17 +603,33 @@ class NovelDetailPanel(QWidget):
     def _populate_models_for_current_provider(self, custom_model: Optional[str] = None) -> None:
         provider_key = self.combo_provider.currentData() or "tokenrouter"
         self.combo_model.blockSignals(True)
-        self.combo_model.clear()
+        try:
+            self.combo_model.clear()
 
-        models = PROVIDER_MODELS.get(provider_key, [])
-        for m in models:
-            self.combo_model.addItem(m)
+            models = self._configured_models.get(
+                provider_key,
+                PROVIDER_MODELS.get(provider_key, []),
+            )
+            for model in models:
+                self.combo_model.addItem(model)
 
-        if custom_model:
-            self.combo_model.setEditText(custom_model)
-        elif models:
-            self.combo_model.setCurrentIndex(0)
-        self.combo_model.blockSignals(False)
+            if custom_model and custom_model in models:
+                self.combo_model.setCurrentText(custom_model)
+            elif models:
+                self.combo_model.setCurrentIndex(0)
+            elif custom_model:
+                self.combo_model.setEditText(custom_model)
+        finally:
+            self.combo_model.blockSignals(False)
+
+    def set_provider_models(self, models_by_provider: dict) -> None:
+        """Refresh the library model list from the API settings page."""
+        self._configured_models = {
+            provider.casefold(): list(models)
+            for provider, models in models_by_provider.items()
+        }
+        current_model = self.combo_model.currentText().strip()
+        self._populate_models_for_current_provider(current_model)
 
     def get_selected_provider(self) -> str:
         return self.combo_provider.currentData() or "tokenrouter"
@@ -987,6 +1004,8 @@ class MainWindow(QMainWindow):
         # Tab 3: API Key Management / Settings
         settings_tab = self._build_settings_tab()
         self.tabs.addTab(settings_tab, "🔑 API Keys")
+        self.api_keys_widget.models_changed.connect(self.detail_panel.set_provider_models)
+        self.detail_panel.set_provider_models(self.api_keys_widget.get_models())
 
         # Tab 4: Website adapter setup
         self.website_setup = WebsiteSetupWidget()
