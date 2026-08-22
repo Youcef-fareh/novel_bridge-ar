@@ -196,7 +196,7 @@ class ChapterTableWidget(QWidget):
                 chapter_id = item.data(Qt.ItemDataRole.UserRole)
                 if chapter_id is not None:
                     result.append(chapter_id)
-            return result
+        return result
 
     def get_stats(self, chapters: List[Chapter], is_native_arabic: bool = False) -> dict:
         total = len(chapters)
