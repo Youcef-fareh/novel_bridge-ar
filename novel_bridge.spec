@@ -16,6 +16,7 @@ datas = []
 
 # GUI stylesheet & other resources
 datas += [("gui/resources", "gui/resources")]
+datas += [("NovelBridge_fixed.html", ".")]
 
 # App icon — bundled so the frozen exe can load it at runtime
 datas += [("icon.ico", ".")]
@@ -45,6 +46,8 @@ hidden_imports = [
     "PyQt6.QtWidgets",
     "PyQt6.QtCore",
     "PyQt6.QtGui",
+    "PyQt6.QtWebEngineWidgets",
+    "PyQt6.QtWebChannel",
     "PyQt6.sip",
     # HTTP clients
     "httpx",

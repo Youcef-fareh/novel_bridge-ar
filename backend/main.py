@@ -19,7 +19,7 @@ from backend.adapters.base import AdapterRegistry
 from backend.adapters.galaxynovels import GalaxyNovelsAdapter
 from backend.adapters.novelfire import NovelFireAdapter
 from backend.adapters.novelphoenix import NovelPhoenixAdapter
-from backend.adapters.wtrlab import WTRLabAdapter
+from backend.adapters.wuxiaspot import WuxiaSpotAdapter
 from backend.database import (
     add_glossary_rule, create_novel, delete_glossary_rule,
     get_all_glossary_rules, get_all_novels,
@@ -52,9 +52,9 @@ async def startup():
     init_db()
     # Register site adapters
     AdapterRegistry.register(NovelFireAdapter())
-    AdapterRegistry.register(WTRLabAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
+    AdapterRegistry.register(WuxiaSpotAdapter())
 
 
 # ── Request/Response schemas ───────────────────────────────────────────────────

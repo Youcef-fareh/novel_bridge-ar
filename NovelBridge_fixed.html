@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovelBridge — Arabic Web Novel Translator</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/fraunces@latest/latin-400-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/fraunces@latest/latin-600-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/fraunces@latest/latin-700-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/fraunces@latest/latin-600-italic.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-400-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-500-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-600-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-700-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-400-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/jetbrains-mono@latest/latin-500-normal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/fonts/amiri@latest/arabic-400-normal.css">
+<style>
+:root{
+  --paper:#f4f0e6; --paper2:#ece5d3;
+  --surface:#fffdf7; --surface2:#faf6eb;
+  --ink:#211d16; --ink-soft:#4c4636; --muted:#877f6a; --faint:#a99f86;
+  --line:#e3dbc6; --line2:#cfc4a6;
+  --teal:#0e6b5b; --teal-strong:#0a5546; --teal-soft:#e0efe9;
+  --bronze:#9a6a1a; --bronze-strong:#7c5410; --bronze-soft:#f3e8d0;
+  --blue:#3d63ad; --blue-soft:#e6edf8;
+  --green:#257a4a; --green-soft:#e1f0e4;
+  --amber:#a06a10; --amber-soft:#f7ecd2;
+  --red:#b23a30; --red-soft:#f8e6e2;
+  --sel:#f2ead2;
+  --font-d:'Fraunces',Georgia,serif;
+  --font-u:'Inter','Segoe UI',Arial,sans-serif;
+  --font-m:'JetBrains Mono',Consolas,monospace;
+  --font-a:'Amiri',serif;
+  --shadow:0 1px 2px rgba(70,55,20,.06),0 4px 14px rgba(70,55,20,.05);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font:13.5px/1.5 var(--font-u);color:var(--ink);background:var(--paper);display:flex;flex-direction:column;overflow:hidden}
+::selection{background:var(--bronze-soft)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--faint);border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+button{font-family:var(--font-u)}
+.ic{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ic-sm{width:13px;height:13px}.ic-lg{width:20px;height:20px}.ic-xl{width:34px;height:34px}
+.mono{font-family:var(--font-m)}
+.spin{animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.topline{height:3px;flex:none;background:linear-gradient(90deg,var(--teal),var(--bronze) 55%,var(--red))}
+
+/* ---------- header ---------- */
+.app-header{flex:none;height:58px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 20px;gap:14px}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.brand-mark{width:36px;height:36px;border-radius:10px;background:var(--ink);color:var(--bronze-soft);display:grid;place-items:center;box-shadow:inset 0 -6px 12px rgba(0,0,0,.35)}
+.brand-name{font:700 19px/1.1 var(--font-d);letter-spacing:-.2px;color:var(--ink)}
+.brand-name em{font-style:italic;color:var(--teal);font-weight:600}
+.tagline{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:1px}
+.header-actions{display:flex;align-items:center;gap:9px}
+
+/* ---------- buttons ---------- */
+.btn{height:36px;padding:0 14px;border-radius:9px;border:1px solid transparent;font-weight:600;font-size:12.8px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;transition:transform .12s,box-shadow .12s,background .15s,border-color .15s,color .15s;background:var(--paper2);color:var(--ink-soft);white-space:nowrap}
+.btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:var(--shadow)}
+.btn:active:not(:disabled){transform:translateY(0)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn-primary{background:var(--teal);color:#fdfcf7}
+.btn-primary:hover:not(:disabled){background:var(--teal-strong)}
+.btn-bronze{background:var(--bronze);color:#fdf9ee}
+.btn-bronze:hover:not(:disabled){background:var(--bronze-strong)}
+.btn-danger{background:var(--red-soft);color:var(--red);border-color:#e8c4bd}
+.btn-danger:hover:not(:disabled){background:var(--red);color:#fff;border-color:var(--red)}
+.btn-outline{background:var(--surface);border-color:var(--line2);color:var(--ink-soft)}
+.btn-outline:hover:not(:disabled){border-color:var(--faint)}
+.btn-ghost{background:transparent;color:var(--muted)}
+.btn-ghost:hover:not(:disabled){background:var(--paper2);color:var(--ink)}
+.btn-sm{height:30px;padding:0 11px;font-size:12px;border-radius:8px}
+.btn-icon{width:30px;height:30px;padding:0;justify-content:center;border-radius:8px}
+
+/* ---------- tabs ---------- */
+.tabs{flex:none;display:flex;gap:2px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--line)}
+.tab-btn{position:relative;display:flex;align-items:center;gap:8px;border:none;background:transparent;color:var(--muted);font:600 13px var(--font-u);padding:11px 15px 12px;cursor:pointer;border-radius:9px 9px 0 0;transition:color .15s,background .15s}
+.tab-btn .ic{width:15px;height:15px}
+.tab-btn:hover{color:var(--ink-soft);background:var(--surface2)}
+.tab-btn.active{color:var(--ink)}
+.tab-btn.active .ic{color:var(--teal)}
+.tab-btn.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2.5px;border-radius:2px;background:var(--bronze)}
+
+/* ---------- layout ---------- */
+main{flex:1;min-height:0;position:relative}
+.tab-page{position:absolute;inset:0;display:none;padding:18px 22px;overflow:auto}
+.tab-page.active{display:block}
+#page-library.active{display:flex;overflow:hidden}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+
+/* ---------- library ---------- */
+.library-grid{display:flex;gap:16px;width:100%;height:100%;min-height:0}
+.lib-sidebar{flex:none;width:266px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.side-head{display:flex;align-items:center;gap:8px;font:600 15px var(--font-d);color:var(--ink)}
+.side-head .ic{color:var(--teal)}
+.search-wrap{position:relative}
+.search-wrap .ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--faint)}
+.search-wrap input{width:100%;height:36px;padding:0 30px 0 32px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);font:13px var(--font-u);color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
+.search-wrap input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(14,107,91,.13)}
+.search-wrap input::placeholder{color:var(--faint)}
+.search-clear{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:none;background:transparent;color:var(--faint);cursor:pointer;padding:4px;border-radius:6px;display:none}
+.search-clear:hover{color:var(--red);background:var(--red-soft)}
+.search-wrap.has .search-clear{display:block}
+.novel-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.novel-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;cursor:pointer;border:1px solid transparent;transition:background .13s,border-color .13s;position:relative}
+.novel-row:hover{background:var(--surface2);border-color:var(--line)}
+.novel-row.active{background:var(--sel);border-color:var(--line2);box-shadow:inset 3px 0 0 var(--bronze)}
+.ncover{width:38px;height:54px;object-fit:cover;border-radius:5px;border:1px solid var(--line2);background:var(--paper2);flex:none}
+.ninfo{min-width:0;flex:1}
+.ntitle{font-weight:600;font-size:12.8px;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
+.nmeta{font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px}
+.ndot{width:8px;height:8px;border-radius:50%;flex:none}
+.side-actions{display:flex;gap:8px}
+.side-actions .btn{flex:1;justify-content:center}
+.lib-detail{flex:1;min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:14px;padding-right:2px}
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--muted);border:1.5px dashed var(--line2);border-radius:14px;background:var(--surface2)}
+.empty-state .ring{width:84px;height:84px;border-radius:50%;background:var(--surface);border:1px solid var(--line2);display:grid;place-items:center;color:var(--bronze)}
+.empty-state h3{font:600 18px var(--font-d);color:var(--ink-soft)}
+.detail-head{display:flex;gap:16px;align-items:center;padding:16px 18px}
+.dcover{width:62px;height:90px;object-fit:cover;border-radius:7px;border:1px solid var(--line2);box-shadow:0 6px 14px rgba(60,45,15,.18);flex:none}
+.dhead-info{flex:1;min-width:0}
+.dtitle{font:700 21px/1.25 var(--font-d);color:var(--ink);letter-spacing:-.2px}
+.dmeta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:7px;font-size:12px;color:var(--muted);align-items:center}
+.dmeta .mono{font-size:11px;background:var(--surface2);border:1px solid var(--line);padding:2px 7px;border-radius:6px;color:var(--ink-soft)}
+.dmeta .au{display:inline-flex;gap:6px;align-items:center}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:11px 15px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sc,var(--ink))}
+.stat-n{font:600 24px/1 var(--font-d);color:var(--sc,var(--ink))}
+.stat-l{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px}
+.table-card{display:flex;flex-direction:column;min-height:180px;flex:1}
+.table-tools{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line)}
+.table-tools .tt-l{font:600 13px var(--font-d);display:flex;gap:8px;align-items:center}
+.table-tools .tt-l .ic{color:var(--teal)}
+#selCount{font-size:11.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);padding:3px 10px;border-radius:999px}
+.table-wrap{flex:1;overflow:auto;min-height:0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{position:sticky;top:0;z-index:2;background:var(--surface);text-align:left;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 12px;border-bottom:2px solid var(--teal)}
+tbody td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr{cursor:pointer;transition:background .1s}
+tbody tr:hover{background:var(--surface2)}
+tbody tr.sel{background:var(--sel)}
+tbody tr:focus{outline:2px solid var(--bronze);outline-offset:-2px}
+td.c-num{color:var(--muted);font-family:var(--font-m);font-size:11.5px;width:44px}
+td.c-cb{width:34px}
+input[type=checkbox]{width:15px;height:15px;accent-color:var(--teal);cursor:pointer}
+.st{display:inline-flex;gap:6px;align-items:center;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.st .ic{width:11px;height:11px;stroke-width:2.2}
+.st-pending{background:var(--paper2);color:var(--muted)}
+.st-scraped{background:var(--blue-soft);color:var(--blue)}
+.st-translating{background:var(--amber-soft);color:var(--amber)}
+.st-translated{background:var(--green-soft);color:var(--green)}
+.st-failed{background:var(--red-soft);color:var(--red)}
+.tr-ar{font-family:var(--font-a);font-size:14px;color:var(--green);font-weight:700}
+.tr-dim{color:var(--faint)}
+.tr-wait{color:var(--amber)}
+.prov-card{background:var(--surface2);border:1px solid var(--line);border-radius:11px;padding:12px 14px;display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.pfield label{display:flex;gap:6px;align-items:center;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:6px}
+.pfield label .ic{width:13px;height:13px;color:var(--teal)}
+.input,select.input{height:34px;border:1px solid var(--line2);border-radius:8px;background:var(--surface);padding:0 10px;font:13px var(--font-u);color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
+.input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(14,107,91,.13)}
+select.input{cursor:pointer}
+.grow{flex:1;min-width:180px}
+.gap-box{background:var(--paper);border:1px solid var(--line2);border-radius:9px;padding:8px 12px 9px}
+.gap-box label{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);font-weight:700;display:block;margin-bottom:5px}
+.gap-in{display:flex;align-items:center;gap:6px}
+.gap-in input{width:64px;height:28px;border:1px solid var(--line2);border-radius:7px;background:var(--surface);text-align:center;font:12.5px var(--font-m);color:var(--ink);outline:none}
+.gap-in input:focus{border-color:var(--teal)}
+.gap-in span{color:var(--muted);font-size:12px}
+.gap-box small{display:block;color:var(--faint);font-size:10.5px;margin-top:4px}
+.job-card{background:var(--surface);border:1px solid var(--line2);border-radius:11px;padding:13px 16px;display:flex;flex-direction:column;gap:9px}
+.job-top{display:flex;align-items:center;gap:12px}
+.job-bar{flex:1;height:9px;border-radius:99px;background:var(--paper2);border:1px solid var(--line);overflow:hidden}
+#jobFill{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--teal),#17907a);position:relative;transition:width .25s}
+#jobFill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:sheen 1.4s infinite}
+@keyframes sheen{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+#jobPct{font:500 12px var(--font-m);color:var(--teal);min-width:38px;text-align:right}
+.job-msg{font-size:12px;color:var(--muted);display:flex;gap:7px;align-items:center;min-height:18px}
+.job-msg .ic{color:var(--amber)}
+.job-btns{display:flex;gap:8px;justify-content:flex-end}
+.action-row{display:flex;gap:9px;flex-wrap:wrap;padding-bottom:6px}
+
+/* ---------- glossary ---------- */
+.page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.page-title{font:700 20px var(--font-d);color:var(--ink);display:flex;align-items:center;gap:10px}
+.page-title .ic{color:var(--teal)}
+.page-title.xl{font-size:22px}
+.head-actions{display:flex;gap:8px}
+.helper{color:var(--muted);font-size:12.5px;margin:2px 0 12px;max-width:760px}
+.gloss-card{overflow:hidden;display:flex;flex-direction:column}
+td.ar-cell{direction:rtl;text-align:right;font-family:var(--font-a);font-size:15.5px;color:var(--ink)}
+td.id-cell{font-family:var(--font-m);font-size:11px;color:var(--faint);width:52px}
+tr.gsel{background:var(--sel)}
+.notes-cell{color:var(--muted);font-size:12px}
+
+/* ---------- api keys ---------- */
+.api-foot{margin-top:14px;display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px;gap:10px;flex-wrap:wrap}
+.api-foot .mono{font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px}
+#envState.dirty{color:var(--amber);font-weight:600}
+.prov-stack{display:flex;flex-direction:column;gap:14px}
+.prov-card2{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.prov-card2.disabled{opacity:.62}
+.prov-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.prov-name{font:700 16px var(--font-d);color:var(--ink)}
+.prov-prefix{font-size:10.5px;color:var(--bronze);margin-top:2px}
+.pill{font-size:11px;font-weight:600;padding:4px 11px;border-radius:999px;display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+.pill i{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.pill.ok{background:var(--green-soft);color:var(--green)}
+.pill.off{background:var(--paper2);color:var(--muted)}
+.pill.warn{background:var(--amber-soft);color:var(--amber)}
+.pill.err{background:var(--red-soft);color:var(--red)}
+.krow{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:8px 11px}
+.krow .klabel{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);width:64px;flex:none}
+.kval{flex:1;font-family:var(--font-m);font-size:12px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kval.unset{color:var(--faint);font-family:var(--font-u);font-style:italic}
+.brow{display:flex;align-items:center;gap:8px}
+.brow .klabel{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);width:64px;flex:none}
+.brow .input{flex:1;font-family:var(--font-m);font-size:12px}
+.models-label{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.models-panel{background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:6px;display:flex;flex-direction:column;gap:4px}
+.model-row{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:7px;background:var(--surface);border:1px solid var(--line)}
+.model-row .mdot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
+.model-row .mname{font-family:var(--font-m);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.role-chip{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--teal);background:var(--teal-soft);padding:2px 8px;border-radius:999px}
+.pact-row{display:flex;gap:8px;flex-wrap:wrap;border-top:1px dashed var(--line2);padding-top:12px}
+
+/* ---------- add website ---------- */
+.ws-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.ws-panel{padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+.ws-panel h3{font:600 15px var(--font-d);display:flex;gap:8px;align-items:center}
+.ws-panel h3 .ic{color:var(--bronze)}
+.ws-help{font-size:12px;color:var(--muted);background:var(--surface2);border-left:3px solid var(--teal);border-radius:0 8px 8px 0;padding:8px 11px}
+.ws-result{display:none;font-size:12.5px;font-weight:600;border-radius:9px;padding:9px 12px;gap:8px;align-items:flex-start;border:1px solid}
+.ws-result.show{display:flex}
+.ws-result .ic{margin-top:1px}
+.r-red{background:var(--red-soft);color:var(--red);border-color:#e8c4bd}
+.r-green{background:var(--green-soft);color:var(--green);border-color:#bcdcc4}
+.r-orange{background:var(--amber-soft);color:var(--amber);border-color:#e5cf9d}
+.flabel{display:block;font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.gh-row{display:flex;gap:8px}
+.gh-row .input{flex:1;font-family:var(--font-m);font-size:12px}
+
+/* ---------- adapters ---------- */
+.adp-card{overflow:hidden}
+.src-chip{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px}
+.src-builtin{background:var(--paper2);color:var(--muted)}
+.src-custom{background:var(--bronze-soft);color:var(--bronze)}
+tr.asel{background:var(--sel)}
+
+/* ---------- status bar ---------- */
+.statusbar{flex:none;height:32px;background:var(--surface);border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;color:var(--muted)}
+.sb-left{display:flex;align-items:center;gap:8px;min-width:0}
+.sb-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
+.sb-dot.off{background:var(--faint)}
+.sb-dot.pulse{animation:pul 1.6s infinite}
+@keyframes pul{0%{box-shadow:0 0 0 0 rgba(37,122,74,.4)}70%{box-shadow:0 0 0 7px rgba(37,122,74,0)}100%{box-shadow:0 0 0 0 rgba(37,122,74,0)}}
+.sb-right{display:flex;gap:12px;align-items:center}
+.sb-right .mono{font-size:10.5px;color:var(--faint)}
+
+/* ---------- modal ---------- */
+.modal-back{position:fixed;inset:0;background:rgba(33,29,22,.44);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:90;animation:fade .16s}
+.modal-back[hidden]{display:none !important;}
+@keyframes fade{from{opacity:0}}
+.modal{background:var(--surface);border:1px solid var(--line2);border-radius:14px;box-shadow:0 24px 60px rgba(30,20,5,.3);width:min(560px,94vw);max-height:88vh;display:flex;flex-direction:column;animation:pop .18s}
+@keyframes pop{from{transform:translateY(8px) scale(.98);opacity:0}}
+.modal.wide{width:min(680px,94vw)}
+.m-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0}
+.m-head h3{font:700 17px var(--font-d);color:var(--ink)}
+.m-x{border:none;background:transparent;color:var(--faint);cursor:pointer;padding:6px;border-radius:8px}
+.m-x:hover{background:var(--red-soft);color:var(--red)}
+.m-body{padding:14px 20px;overflow:auto}
+.m-hint{font-size:12px;color:var(--muted);margin-top:10px}
+.m-foot{display:flex;justify-content:flex-end;gap:9px;padding:0 20px 18px}
+.form-row{margin-bottom:13px}
+.form-row .input{width:100%}
+.field-err{display:flex;gap:7px;align-items:flex-start;color:var(--red);font-size:12px;font-weight:600;margin-top:7px}
+.form-2col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* schedule */
+.sch-list{border:1px solid var(--line);border-radius:10px;background:var(--surface2);padding:6px;display:flex;flex-direction:column;gap:4px;max-height:280px;overflow:auto}
+.sch-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:grab}
+.sch-row.dragging{opacity:.45;border-style:dashed}
+.sch-row .grip{color:var(--faint)}
+.sch-t{flex:1;font-weight:600;font-size:12.8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sch-n{font-size:11px;color:var(--muted);font-family:var(--font-m)}
+.sch-mv{display:flex;gap:4px}
+.opt-panel{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-top:12px}
+.opt-panel label{font-size:12px;font-weight:600;color:var(--ink-soft);flex:1}
+.opt-panel input{width:80px;height:30px;border:1px solid var(--line2);border-radius:7px;text-align:center;font:12.5px var(--font-m);outline:none;background:var(--surface)}
+.opt-panel small{color:var(--faint);font-size:11px}
+
+/* ---------- toast ---------- */
+#toasts{position:fixed;right:18px;bottom:44px;display:flex;flex-direction:column;gap:8px;z-index:120;align-items:flex-end}
+.toast{display:flex;gap:10px;align-items:flex-start;background:#26221a;color:#f2ecdd;border-radius:11px;padding:11px 14px;min-width:260px;max-width:380px;font-size:12.5px;box-shadow:0 12px 30px rgba(20,12,0,.35);animation:tin .22s;border:1px solid #3a3427}
+.toast.out{opacity:0;transform:translateY(6px);transition:.25s}
+@keyframes tin{from{transform:translateY(10px);opacity:0}}
+.toast .ic{margin-top:1px}
+.t-ok .ic{color:#7fd6a4}.t-err .ic{color:#f0938a}.t-warn .ic{color:#e8c069}.t-info .ic{color:#8fb7ee}
+
+/* context menu */
+#ctxMenu{position:fixed;z-index:130;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 14px 34px rgba(30,20,5,.25);padding:5px;display:none;min-width:170px}
+#ctxMenu button{display:flex;gap:9px;align-items:center;width:100%;border:none;background:transparent;padding:8px 10px;border-radius:7px;font:600 12.5px var(--font-u);color:var(--red);cursor:pointer;text-align:left}
+#ctxMenu button:hover{background:var(--red-soft)}
+
+@media (max-width:980px){
+  .library-grid{flex-direction:column}
+  .lib-sidebar{width:100%;max-height:280px}
+  .ws-grid{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-bridge" viewBox="0 0 24 24"><path d="M2.5 18.5h19"/><path d="M4.5 18.5V16a7.5 7.5 0 0 1 15 0v2.5"/><path d="M9 18.5v-2.4M12 18.5v-3.2M15 18.5v-2.4"/><path d="M2.5 14.5h2M19.5 14.5h2"/></symbol>
+  <symbol id="i-books" viewBox="0 0 24 24"><path d="M5 3.5h3.4v17H5z"/><path d="M10.4 3.5h3.4v17h-3.4z"/><path d="M15.6 5l3.3.9-3.6 14.6-3.3-.9z"/></symbol>
+  <symbol id="i-book-open" viewBox="0 0 24 24"><path d="M2.5 5h6.5a3 3 0 0 1 3 3v11.5a2.5 2.5 0 0 0-2.5-2.5h-7z"/><path d="M21.5 5H15a3 3 0 0 0-3 3v11.5a2.5 2.5 0 0 1 2.5-2.5h7z"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="4.2"/><path d="M11 12.5 20.5 3m-3.2 3.2 2.7 2.7M14.6 8.9l2.4 2.4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3"/><path d="M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 16v5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5V15m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-language" viewBox="0 0 24 24"><path d="M3.5 5.5h9.5M8.2 3v2.5c0 4-2.2 7.6-5.2 9.5M6 8.5c1.4 3 4.3 5.6 7 6.7"/><path d="M12.5 21l4.2-9.5L21 21m-6.9-3h5.2"/></symbol>
+  <symbol id="i-epub" viewBox="0 0 24 24"><path d="M14 2.5H6a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-11z"/><path d="M14 2.5v6h6"/><path d="M12 11.5v6m0 0-2.5-2.5m2.5 2.5 2.5-2.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3.5 6h17M8.5 6V4.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1V6m3 0v13.5a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 3.5V9h-5.5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5 19 12 7 19.5z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20.5 20.5-4.6-4.6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 22 20H2z"/><path d="M12 10v4.5M12 17.5v.1"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.1"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="10" y="10" width="4" height="4"/><path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 3h8l10 10-8 8L3 11z"/><path d="M8 8h.1"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M4 4l16 16"/><path d="M10 5.8A9.8 9.8 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17.6 17.6 0 0 1-3 3.7M6.6 6.6A17 17 0 0 0 2.5 12S6 18.5 12 18.5a9.6 9.6 0 0 0 3.4-.6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14m0 0-6-6m6 6 6-6"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.1M7 16.5h.1"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M17 3.5 20.5 7 8.5 19H5v-3.5z"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.6-6.3M3 3.5V9h5.5"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.5a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V3.5m0 0-4 4m4-4 4 4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4.5 1.4-4.5-2.6-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 6h.1M9 12h.1M9 18h.1M15 6h.1M15 12h.1M15 18h.1"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
+</svg>
+
+<div class="topline"></div>
+
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-mark"><svg class="ic ic-lg"><use href="#i-bridge"/></svg></div>
+    <div>
+      <div class="brand-name">Novel<em>Bridge</em></div>
+      <div class="tagline">English web novels → Arabic EPUB</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost" id="btnServer"><svg class="ic"><use href="#i-server"/></svg> Start API Server</button>
+    <button class="btn btn-outline" id="btnSchedule"><svg class="ic"><use href="#i-calendar"/></svg> Schedule Translations</button>
+    <button class="btn btn-primary" id="btnAddNovel"><svg class="ic"><use href="#i-plus"/></svg> Add Novel</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="library"><svg class="ic"><use href="#i-books"/></svg> Library</button>
+  <button class="tab-btn" data-tab="glossary"><svg class="ic"><use href="#i-book-open"/></svg> Glossary</button>
+  <button class="tab-btn" data-tab="api"><svg class="ic"><use href="#i-key"/></svg> API Keys</button>
+  <button class="tab-btn" data-tab="website"><svg class="ic"><use href="#i-globe"/></svg> Add Website</button>
+  <button class="tab-btn" data-tab="adapters"><svg class="ic"><use href="#i-plug"/></svg> Adapters</button>
+</nav>
+
+<main>
+  <!-- ============ LIBRARY ============ -->
+  <section class="tab-page active" id="page-library">
+    <div class="library-grid">
+      <aside class="lib-sidebar">
+        <div class="side-head"><svg class="ic"><use href="#i-books"/></svg> Library</div>
+        <div class="search-wrap" id="searchWrap">
+          <svg class="ic"><use href="#i-search"/></svg>
+          <input id="novelSearch" placeholder="Search novels by title or author…" autocomplete="off">
+          <button class="search-clear" id="searchClear" title="Clear search"><svg class="ic ic-sm"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="novel-list" id="novelList"></div>
+        <div class="side-actions">
+          <button class="btn btn-danger btn-sm" id="btnLibDelete"><svg class="ic ic-sm"><use href="#i-trash"/></svg> Delete</button>
+          <button class="btn btn-outline btn-sm" id="btnLibRefresh"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> Refresh</button>
+        </div>
+      </aside>
+      <div class="lib-detail" id="libDetail"></div>
+    </div>
+  </section>
+
+  <!-- ============ GLOSSARY ============ -->
+  <section class="tab-page" id="page-glossary">
+    <div class="page-head">
+      <div class="page-title"><svg class="ic ic-lg"><use href="#i-book-open"/></svg> Translation Glossary</div>
+      <div class="head-actions">
+        <button class="btn btn-outline" id="btnSyncGloss"><svg class="ic"><use href="#i-refresh"/></svg> Sync from JSON</button>
+        <button class="btn btn-primary" id="btnAddRule" style="background:var(--green)"><svg class="ic"><use href="#i-plus"/></svg> Add Rule</button>
+        <button class="btn btn-danger" id="btnDelRules"><svg class="ic"><use href="#i-trash"/></svg> Delete Selected</button>
+      </div>
+    </div>
+    <p class="helper">Exact English → Arabic rules injected into every translation prompt and enforced through a regex post-processing pass.</p>
+    <div class="card gloss-card">
+      <div class="table-wrap" style="max-height:calc(100vh - 260px)">
+        <table>
+          <thead><tr><th style="width:52px">ID</th><th style="width:26%">English Term</th><th style="width:30%">Arabic Translation</th><th>Notes</th></tr></thead>
+          <tbody id="glossBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ API KEYS ============ -->
+  <section class="tab-page" id="page-api">
+    <div class="page-head">
+      <div class="page-title"><svg class="ic ic-lg"><use href="#i-key"/></svg> API Providers</div>
+      <div class="head-actions">
+        <button class="btn btn-outline" id="btnReloadEnv"><svg class="ic"><use href="#i-rotate"/></svg> Reload from .env</button>
+        <button class="btn" id="btnAddProv" style="background:var(--green);color:#fff"><svg class="ic"><use href="#i-plus"/></svg> Add Provider</button>
+        <button class="btn btn-primary" id="btnSaveAll"><svg class="ic"><use href="#i-check"/></svg> Save All</button>
+      </div>
+    </div>
+    <p class="helper">Provider credentials and models are stored in the project environment file. Secrets stay masked until explicitly revealed.</p>
+    <div class="prov-stack" id="provWrap"></div>
+    <div class="api-foot">
+      <span id="envState">Loaded from <span class="mono">config/.env</span> · no unsaved changes</span>
+      <span class="mono">PREFIX_API_KEY · PREFIX_BASE_URL · PREFIX_MODEL</span>
+    </div>
+  </section>
+
+  <!-- ============ ADD WEBSITE ============ -->
+  <section class="tab-page" id="page-website">
+    <div class="page-title xl" style="margin-bottom:4px">Add A Website</div>
+    <p class="helper">Connect another novel website by choosing a suitable scraping method. Existing adapters remain unchanged; new adapters install into <span class="mono" style="font-size:11px">backend/adapters/custom</span>.</p>
+    <div class="ws-grid">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="card ws-panel">
+          <h3><svg class="ic"><use href="#i-cpu"/></svg> Recommended scraping method</h3>
+          <select class="input" id="wsMethod">
+            <option value="http">HTTP + selectolax — fast static HTML</option>
+            <option value="curl">curl_cffi — Cloudflare / browser-like requests</option>
+            <option value="playwright">Playwright — JavaScript, accordions, protected pages</option>
+          </select>
+          <div class="ws-help" id="wsMethodHelp"></div>
+        </div>
+        <div class="card ws-panel">
+          <h3><svg class="ic"><use href="#i-search"/></svg> Check a website</h3>
+          <div>
+            <label class="flabel">Novel URL</label>
+            <input class="input" id="wsUrl" style="width:100%" placeholder="https://example-novel-site.com/novel/…">
+          </div>
+          <button class="btn btn-outline" id="btnCheckSite" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-search"/></svg> Check Adapter</button>
+          <div>
+            <label class="flabel">Source language</label>
+            <select class="input" id="wsLang" style="width:100%">
+              <option value="English">English (translate it)</option>
+              <option value="Arabic">Arabic (already translated)</option>
+            </select>
+          </div>
+          <button class="btn btn-bronze" id="btnGenAdapter" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-plug"/></svg> Generate Adapter Template</button>
+          <div class="ws-result" id="wsResult"></div>
+        </div>
+      </div>
+      <div class="card ws-panel">
+        <h3><svg class="ic"><use href="#i-upload"/></svg> Install an adapter</h3>
+        <button class="btn btn-outline" id="btnUpload" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-upload"/></svg> Upload Adapter File (.py)</button>
+        <input type="file" id="fileInput" accept=".py" hidden>
+        <div class="gh-row">
+          <input class="input" id="ghUrl" placeholder="https://raw.githubusercontent.com/…/adapter.py">
+          <button class="btn" id="btnGhImport" style="background:var(--green);color:#fff"><svg class="ic"><use href="#i-github"/></svg> Import</button>
+        </div>
+        <button class="btn btn-ghost" id="btnGhSearch" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-github"/></svg> Open GitHub adapter search</button>
+        <div class="ws-help" style="border-left-color:var(--bronze)">Imported adapters are copied to <b>backend/adapters/custom</b> and loaded for the current session. Built-in adapters are protected and can never be overwritten.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ADAPTERS ============ -->
+  <section class="tab-page" id="page-adapters">
+    <div class="page-head">
+      <div class="page-title xl"><svg class="ic ic-lg"><use href="#i-plug"/></svg> Adapter Registry</div>
+      <div class="head-actions">
+        <button class="btn btn-outline" id="btnAdpRefresh"><svg class="ic"><use href="#i-refresh"/></svg> Refresh</button>
+        <button class="btn btn-danger" id="btnAdpDelete" disabled><svg class="ic"><use href="#i-trash"/></svg> Delete Custom Adapter</button>
+      </div>
+    </div>
+    <p class="helper">Built-in adapters are protected. Only adapters installed under <span class="mono" style="font-size:11px">backend/adapters/custom</span> can be removed.</p>
+    <div class="card adp-card">
+      <div class="table-wrap" style="max-height:calc(100vh - 260px)">
+        <table>
+          <thead><tr><th>Site ID</th><th>Adapter Class</th><th>Source</th><th>Language</th><th>Method</th><th>File</th></tr></thead>
+          <tbody id="adpBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">
+  <div class="sb-left"><span class="sb-dot" id="sbDot"></span><span id="statusMsg">Ready - Add a novel URL to get started.</span></div>
+  <div class="sb-right"><span id="sbServer">server stopped</span><span class="mono">NovelBridge v2.4 · config/.env</span></div>
+</footer>
+
+<div class="modal-back" id="modalBack" hidden><div class="modal" id="modalBox"></div></div>
+<div id="toasts"></div>
+<div id="ctxMenu"><button id="ctxDelete"><svg class="ic ic-sm"><use href="#i-trash"/></svg> Delete Novel</button></div>
+
+<script>
+/* ================= helpers ================= */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const ic=(n,c='')=>`<svg class="ic ${c}" aria-hidden="true"><use href="#i-${n}"></use></svg>`;
+const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const now=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+/* ================= data ================= */
+const COVERS={quill:'https://image.qwenlm.ai/public_source/419a6057-894e-4cb9-983a-adeb02cb7267/15843a2e5-203a-4944-acd4-6bdaea3fcb31.png'};
+const state={selectedId:null,checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],adpSel:null,glossSel:new Set()};
+const current=()=>state.novels.find(n=>n.id===state.selectedId)||null;
+
+/* ================= status / toast ================= */
+function setStatus(m){$('#statusMsg').textContent=m}
+function toast(msg,type='ok'){
+ const icons={ok:'check',err:'alert',warn:'alert',info:'info'};
+ const t=document.createElement('div');t.className=`toast t-${type}`;
+ t.innerHTML=`${ic(icons[type])}<span>${esc(msg)}</span>`;
+ $('#toasts').appendChild(t);
+ setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),260)},3600);
+}
+
+/* ================= modal ================= */
+function openModal(html,wide=false){
+ activeModalCancel=null;
+ $('#modalBox').className='modal'+(wide?' wide':'');
+ $('#modalBox').innerHTML=html;$('#modalBack').hidden=false;
+ $('#modalBox').querySelectorAll('[data-mx]').forEach(b=>b.onclick=closeModal);
+ return $('#modalBox');
+}
+let activeModalCancel=null;
+function closeModal(){
+ if(activeModalCancel){
+  const cancel=activeModalCancel;
+  activeModalCancel=null;
+  cancel();
+  return;
+ }
+ $('#modalBack').hidden=true;
+}
+$('#modalBack').addEventListener('mousedown',e=>{if(e.target.id==='modalBack')closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#modalBack').hidden=true;$('#ctxMenu').style.display='none'}});
+function confirmBox(title,msg,okText='Delete'){
+ return new Promise(res=>{
+  let settled=false;
+  const finish=value=>{
+   if(settled)return;
+   settled=true;
+   activeModalCancel=null;
+   $('#modalBack').hidden=true;
+   res(value);
+  };
+  const m=openModal(`
+   <div class="m-head"><h3>${esc(title)}</h3><button class="m-x" id="cfCancelX" type="button">${ic('x')}</button></div>
+   <div class="m-body"><p style="color:var(--ink-soft);font-size:13px">${esc(msg)}</p></div>
+   <div class="m-foot"><button class="btn btn-ghost" id="cfCancel" type="button">Cancel</button><button class="btn btn-danger" id="cfOk" type="button">${ic('trash')} ${esc(okText)}</button></div>`);
+  activeModalCancel=()=>finish(false);
+  m.querySelector('#cfOk').onclick=()=>finish(true);
+  m.querySelector('#cfCancel').onclick=()=>finish(false);
+  m.querySelector('#cfCancelX').onclick=()=>finish(false);
+ });
+}
+function infoBox(title,msg,icon='info',tone='warn'){
+ openModal(`
+  <div class="m-head"><h3>${esc(title)}</h3><button class="m-x" data-mx>${ic('x')}</button></div>
+  <div class="m-body"><p style="color:var(--ink-soft);font-size:13px;display:flex;gap:10px;align-items:flex-start"><span style="color:var(--${tone})">${ic(icon,'ic-lg')}</span><span>${msg}</span></p></div>
+  <div class="m-foot"><button class="btn btn-primary" data-mx>OK</button></div>`);
+}
+
+/* ================= tabs ================= */
+$$('.tab-btn').forEach(b=>b.onclick=()=>{
+ $$('.tab-btn').forEach(x=>x.classList.toggle('active',x===b));
+ $$('.tab-page').forEach(p=>p.classList.toggle('active',p.id==='page-'+b.dataset.tab));
+});
+function gotoTab(t){$$('.tab-btn').find(b=>b.dataset.tab===t).click()}
+
+/* ================= library sidebar ================= */
+function novelStatus(nv){
+ const s=nv.chapters.map(c=>c.status);
+ if(s.includes('translating'))return'translating';
+ if(s.includes('failed'))return'failed';
+ if(s.length&&s.every(x=>x==='translated'))return'translated';
+ if(s.some(x=>['scraped','translated','failed'].includes(x)))return'scraped';
+ return'pending';
+}
+const stDot={pending:'var(--faint)',scraped:'var(--blue)',translating:'var(--amber)',translated:'var(--green)',failed:'var(--red)'};
+function renderSidebar(){
+ const q=$('#novelSearch').value.trim().toLowerCase();
+ $('#searchWrap').classList.toggle('has',!!q);
+ const list=state.novels.filter(n=>!q||n.title.toLowerCase().includes(q)||n.author.toLowerCase().includes(q));
+ $('#novelList').innerHTML=list.length?list.map(nv=>{
+  const t=nv.chapters.length,tr=nv.chapters.filter(c=>c.status==='translated').length,st=novelStatus(nv);
+  return`<div class="novel-row ${nv.id===state.selectedId?'active':''}" data-id="${nv.id}" title="${esc(nv.title)} · ${esc(nv.url)} · ${st.toUpperCase()}">
+   <img class="ncover" src="${nv.cover}" alt="">
+   <div class="ninfo"><div class="ntitle">${esc(nv.title)}</div><div class="nmeta">${esc(nv.site)} · ${tr}/${t} translated</div></div>
+   <span class="ndot" style="background:${stDot[st]}"></span></div>`;
+ }).join(''):`<div style="text-align:center;color:var(--faint);font-size:12px;padding:22px 8px">No novels match “${esc(q)}”.</div>`;
+ $('#btnLibDelete').disabled=!current();
+}
+$('#novelSearch').addEventListener('input',renderSidebar);
+$('#searchClear').onclick=()=>{$('#novelSearch').value='';renderSidebar()};
+$('#novelList').addEventListener('click',e=>{const r=e.target.closest('.novel-row');if(r)selectNovel(r.dataset.id)});
+$('#novelList').addEventListener('contextmenu',e=>{
+ const r=e.target.closest('.novel-row');if(!r)return;e.preventDefault();
+ selectNovel(r.dataset.id);
+ const m=$('#ctxMenu');m.style.display='block';
+ m.style.left=Math.min(e.clientX,innerWidth-190)+'px';m.style.top=Math.min(e.clientY,innerHeight-60)+'px';
+});
+$('#ctxDelete').onclick=()=>{$('#ctxMenu').style.display='none';deleteNovel(current())};
+document.addEventListener('click',e=>{if(!e.target.closest('#ctxMenu'))$('#ctxMenu').style.display='none'});
+$('#btnLibRefresh').onclick=()=>{renderSidebar();renderDetail();toast('Library refreshed','info');setStatus('Library reloaded from local store.')};
+$('#btnLibDelete').onclick=()=>deleteNovel(current());
+
+function selectNovel(id){
+ state.selectedId=id;state.checked.clear();
+ renderSidebar();renderDetail();
+ const nv=current();if(nv)setStatus(`Selected “${nv.title}”.`);
+}
+async function deleteNovel(nv){
+ if(!nv)return;
+ const ok=await confirmBox('Delete Novel',`Delete “${nv.title}” and all of its chapters, scraped text and translations? This cannot be undone.`);
+ if(!ok)return;
+ state.novels=state.novels.filter(n=>n.id!==nv.id);
+ if(state.selectedId===nv.id){state.selectedId=null;state.checked.clear()}
+ renderSidebar();renderDetail();toast(`Deleted “${nv.title}”.`,'err');setStatus('Novel deleted.');
+}
+
+/* ================= library detail ================= */
+const stChip={
+ pending:['clock','Pending','st-pending'],scraped:['download','Scraped','st-scraped'],
+ translating:['refresh spin','Translating','st-translating'],translated:['check','Translated','st-translated'],
+ failed:['alert','Failed','st-failed']};
+function chip(st){
+ const [i,l,c]=stChip[st]||stChip.pending;
+ return`<span class="st ${c}">${ic(i)}${esc(l)}</span>`;
+}
+function counts(nv){
+ const c={total:nv.chapters.length,scraped:0,translated:0,failed:0};
+ nv.chapters.forEach(x=>{if(x.status==='scraped')c.scraped++;if(x.status==='translated')c.translated++;if(x.status==='failed')c.failed++});
+ return c;
+}
+function renderDetail(){
+ const nv=current(),D=$('#libDetail');
+ if(!nv){D.innerHTML=`<div class="empty-state"><div class="ring">${ic('bridge','ic-xl')}</div><h3>Select a novel from the library</h3><p style="font-size:12.5px">Add a novel URL or pick a saved title to inspect chapters, run jobs and build an EPUB.</p></div>`;return}
+ const c=counts(nv),st=novelStatus(nv);
+ D.innerHTML=`
+ <div class="card detail-head">
+   <img class="dcover" src="${nv.cover}" alt="">
+   <div class="dhead-info">
+     <div class="dtitle">${esc(nv.title)}</div>
+     <div class="dmeta"><span class="au">${ic('user','ic-sm')} ${esc(nv.author)}</span><span class="au">${ic('globe','ic-sm')} ${esc(nv.site)}</span><span class="mono">${esc(nv.url)}</span></div>
+   </div>
+   <span class="pill ${st==='failed'?'err':st==='translating'?'warn':st==='translated'?'ok':st==='scraped'?'ok':'off'}"><i></i>${st[0].toUpperCase()+st.slice(1)}</span>
+ </div>
+ <div class="stats">
+   <div class="stat" style="--sc:var(--ink)"><div class="stat-n">${c.total}</div><div class="stat-l">Total</div></div>
+   <div class="stat" style="--sc:var(--blue)"><div class="stat-n">${c.scraped}</div><div class="stat-l">Scraped</div></div>
+   <div class="stat" style="--sc:var(--green)"><div class="stat-n">${c.translated}</div><div class="stat-l">Translated</div></div>
+   <div class="stat" style="--sc:var(--red)"><div class="stat-n">${c.failed}</div><div class="stat-l">Failed</div></div>
+ </div>
+ <div class="card table-card">
+   <div class="table-tools"><span class="tt-l">${ic('books')} Chapter manifest</span><span id="selCount"></span></div>
+   <div class="table-wrap"><table>
+     <thead><tr><th class="c-cb"><input type="checkbox" id="cbAll" title="Select all"></th><th>#</th><th>Title</th><th>Status</th><th>Translation</th></tr></thead>
+     <tbody id="chapBody"></tbody>
+   </table></div>
+ </div>
+ <div class="prov-card">
+   <div class="pfield"><label>${ic('cpu')} Provider</label><select class="input" id="provSel">${state.providers.map(p=>`<option value="${esc(p.name)}" ${p.name===(nv.provider||'Gemini')?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+   <div class="pfield grow"><label>${ic('tag')} Model</label><input class="input" id="modelInp" list="modelList" style="width:100%"><datalist id="modelList"></datalist></div>
+   <div class="gap-box"><label>Request gap</label><div class="gap-in"><input type="number" id="gapInp" min="0" step="0.5" value="2"><span>s</span></div><small>between requests</small></div>
+   <button class="btn btn-outline" data-act="apikeys">${ic('key')} API Keys</button>
+ </div>
+ <div class="job-card" id="jobCard" hidden>
+   <div class="job-top"><div class="job-bar"><div id="jobFill"></div></div><span id="jobPct">0%</span></div>
+   <div class="job-msg" id="jobMsg"></div>
+   <div class="job-btns"><button class="btn btn-outline btn-sm" id="btnPause">${ic('pause')} Pause</button><button class="btn btn-danger btn-sm" id="btnCancel">${ic('x')} Cancel</button></div>
+ </div>
+ <div class="action-row">
+   <button class="btn btn-outline" id="btnScrape">${ic('download')} Scrape Chapters</button>
+   <button class="btn btn-primary" id="btnTransAll">${ic('language')} Translate All</button>
+   <button class="btn btn-outline" id="btnTransSel">${ic('check')} Translate Selected</button>
+   <button class="btn btn-danger" id="btnDelTrans">${ic('trash')} Delete Translation</button>
+   <button class="btn btn-bronze" id="btnEpub">${ic('epub')} Build EPUB</button>
+   <button class="btn btn-danger" id="btnDelNovel">${ic('trash')} Delete Novel</button>
+ </div>`;
+ syncModels();renderChapters();refreshControls();
+}
+function syncModels(){
+ const p=state.providers.find(x=>x.name===$('#provSel')?.value)||state.providers[0];
+ if(!p)return;
+ $('#modelList').innerHTML=p.models.map(m=>`<option value="${m}">`).join('');
+ if(!p.models.includes($('#modelInp').value))$('#modelInp').value=p.models[0]||'';
+}
+function renderChapters(){
+ const nv=current();if(!nv)return;
+ $('#chapBody').innerHTML=nv.chapters.map(c=>{
+  const ck=state.checked.has(c.num);
+  const tr=c.status==='translated'?`<span class="tr-ar">العربية ✓</span>`:c.status==='translating'?`<span class="tr-wait">translating…</span>`:c.status==='failed'?`<span style="color:var(--red);font-size:11.5px">error — retry later</span>`:`<span class="tr-dim">—</span>`;
+  return`<tr class="crow ${ck?'sel':''}" data-num="${c.num}" tabindex="0"><td class="c-cb"><input type="checkbox" data-cb ${ck?'checked':''}></td><td class="c-num">${c.num}</td><td>${esc(c.title)}</td><td>${chip(c.status)}</td><td>${tr}</td></tr>`;
+ }).join('')||`<tr><td colspan="5" style="text-align:center;color:var(--faint);padding:26px">No chapters yet — run “Scrape Chapters” to fetch the table of contents.</td></tr>`;
+ $('#cbAll').checked=nv.chapters.length>0&&nv.chapters.every(c=>state.checked.has(c.num));
+ refreshControls();
+}
+function refreshControls(){
+ const nv=current();if(!nv)return;
+ const c=counts(nv),job=!!state.job;
+ const chkScraped=nv.chapters.some(x=>state.checked.has(x.num)&&x.status==='scraped');
+ const chkTrans=nv.chapters.some(x=>state.checked.has(x.num)&&x.status==='translated');
+ const pend=nv.chapters.filter(x=>x.status==='pending').length;
+ const el=id=>$('#'+id);
+ if(el('selCount'))el('selCount').textContent=`${state.checked.size} selected`;
+ el('btnScrape').disabled=job||(nv.chapters.length>0&&pend===0);
+ el('btnTransAll').disabled=job||c.scraped===0;
+ el('btnTransSel').disabled=job||!chkScraped;
+ el('btnDelTrans').disabled=job||!chkTrans;
+ el('btnEpub').disabled=job||c.translated===0;
+ el('btnDelNovel').disabled=job;
+ $('#btnLibDelete').disabled=!nv;
+}
+/* detail delegation */
+$('#libDetail').addEventListener('click',e=>{
+ const act=e.target.closest('[data-act]');
+ if(act){if(act.dataset.act==='apikeys')gotoTab('api');return}
+ if(e.target.closest('#btnScrape'))return startScrape();
+ if(e.target.closest('#btnTransAll'))return startTranslate(false);
+ if(e.target.closest('#btnTransSel'))return startTranslate(true);
+ if(e.target.closest('#btnEpub'))return startEpub();
+ if(e.target.closest('#btnDelNovel'))return deleteNovel(current());
+ if(e.target.closest('#btnDelTrans'))return delTranslations();
+ if(e.target.closest('#btnPause'))return togglePause();
+ if(e.target.closest('#btnCancel'))return cancelJob();
+ const row=e.target.closest('tr.crow');
+ if(row&&!e.target.closest('input,button')){
+  const n=+row.dataset.num;
+  state.checked.has(n)?state.checked.delete(n):state.checked.add(n);
+  renderChapters();
+ }
+});
+$('#libDetail').addEventListener('change',e=>{
+ if(e.target.id==='cbAll'){
+  const nv=current();nv.chapters.forEach(c=>e.target.checked?state.checked.add(c.num):state.checked.delete(c.num));
+  renderChapters();
+ }else if(e.target.hasAttribute('data-cb')){
+  const n=+e.target.closest('tr').dataset.num;
+  e.target.checked?state.checked.add(n):state.checked.delete(n);
+  renderChapters();
+  }else if(e.target.id==='provSel'){
+   const nv=current();
+   if(nv)nv.provider=e.target.value;
+   syncModels();
+   dirty();
+ }
+});
+$('#libDetail').addEventListener('keydown',e=>{
+ const row=e.target.closest('tr.crow');if(!row)return;
+ if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();(e.key==='ArrowDown'?row.nextElementSibling:row.previousElementSibling)?.focus()}
+ if(e.key===' '){e.preventDefault();const n=+row.dataset.num;state.checked.has(n)?state.checked.delete(n):state.checked.add(n);renderChapters();row.focus?.()}
+});
+async function delTranslations(){
+ const nv=current();
+ const list=nv.chapters.filter(c=>state.checked.has(c.num)&&c.status==='translated');
+ const ok=await confirmBox('Delete Translation',`Remove Arabic translations for ${list.length} checked chapter(s)? Scraped source text is preserved.`,'Delete');
+ if(!ok)return;
+ list.forEach(c=>c.status='scraped');
+ renderChapters();renderSidebar();toast(`Translations removed for ${list.length} chapter(s).`,'warn');setStatus('Translations deleted — source text kept.');
+}
+
+/* ================= job display ================= */
+function showJob(){$('#jobCard').hidden=false;$('#jobFill').style.width='0%';$('#jobPct').textContent='0%'}
+function setJob(pct,msg){$('#jobFill').style.width=pct+'%';$('#jobPct').textContent=Math.round(pct)+'%';$('#jobMsg').innerHTML=`${ic('refresh','spin')} ${esc(msg)}`}
+function hideJob(){$('#jobCard').hidden=true}
+
+/* ================= add novel ================= */
+function matchAdapter(url){
+ let host='';try{host=new URL(url).hostname}catch(e){return null}
+ return state.adapters.find(a=>{
+  const h=host.replace(/^www\./,'').toLowerCase();
+  const site=String(a.site).toLowerCase();
+  return h===site||h.endsWith('.'+site)||h.startsWith(site+'.');
+})||null;
+}
+$('#btnAddNovel').onclick=()=>{
+ const m=openModal(`
+  <div class="m-head"><h3>Add Novel from URL</h3><button class="m-x" data-mx>${ic('x')}</button></div>
+  <div class="m-body">
+    <label class="flabel">Novel URL</label>
+    <input class="input" id="anUrl" placeholder="e.g. https://novelfire.net/book/some-novel-title" style="width:100%">
+    <div class="field-err" id="anErr" hidden></div>
+    <p class="m-hint">The site must be matched by an installed adapter. Unsupported sites can be connected from the <b>Add Website</b> tab.</p>
+  </div>
+  <div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="anOk">${ic('plus')} Add Novel</button></div>`);
+ m.querySelector('#anUrl').focus();
+ m.querySelector('#anOk').onclick=()=>{
+  const url=m.querySelector('#anUrl').value.trim(),err=m.querySelector('#anErr');
+  const fail=t=>{err.hidden=false;err.innerHTML=`${ic('alert','ic-sm')} ${t}`};
+  if(!/^https?:\/\//i.test(url))return fail('Invalid URL — the address must begin with http:// or https://');
+  const ad=matchAdapter(url);
+  if(!ad)return fail('Unsupported Site — no installed adapter recognizes this URL. Installed: '+state.adapters.map(a=>a.site).join(', '));
+  let slug;try{slug=decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop()||'untitled')}catch(e){slug='untitled'}
+  const title=slug.replace(/[-_]+/g,' ').replace(/\b\w/g,x=>x.toUpperCase());
+  const nv={id:'n'+Date.now(),title,author:'Unknown author',site:ad.site,url,cover:COVERS.quill,chapters:[]};
+  state.novels.unshift(nv);closeModal();
+  gotoTab('library');selectNovel(nv.id);
+  toast(`Novel added — “${title}” via ${ad.site}.`);setStatus('Novel added. Run “Scrape Chapters” to fetch the TOC.');
+ };
+ m.querySelector('#anUrl').addEventListener('keydown',e=>{if(e.key==='Enter')m.querySelector('#anOk').click()});
+};
+
+/* ================= schedule ================= */
+$('#btnSchedule').onclick=()=>{
+ const order=state.novels.map(n=>n.id);
+ const build=()=>state.novels.map(nv=>{
+  const pend=nv.chapters.filter(c=>c.status==='pending').length;
+  return`<div class="sch-row" draggable="true" data-id="${nv.id}">${ic('grip')}<input type="checkbox" class="sch-cb"><div class="sch-t">${esc(nv.title)}</div><span style="color:var(--faint)">·</span><span class="sch-n">${pend} pending</span>
+  <span class="sch-mv"><button class="btn btn-ghost btn-icon" data-mv="-1" title="Move up">${ic('up','ic-sm')}</button><button class="btn btn-ghost btn-icon" data-mv="1" title="Move down">${ic('down','ic-sm')}</button></span></div>`;
+ }).join('');
+ const m=openModal(`
+  <div class="m-head"><h3>Schedule translations in order</h3><button class="m-x" data-mx>${ic('x')}</button></div>
+  <div class="m-body">
+   <p class="m-hint" style="margin:0 0 12px">Check novels, arrange the order (drag rows or use the arrows), and an EPUB is exported automatically after each batch finishes.</p>
+   <div class="sch-list" id="schList">${build()}</div>
+   <div class="opt-panel"><label for="schLimit">Chapter limit per novel</label><small>0 = All pending</small><input id="schLimit" type="number" min="0" value="1000"></div>
+   <div class="field-err" id="schErr" hidden></div>
+  </div>
+  <div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="schOk">${ic('calendar')} Create Schedule</button></div>`,true);
+ const list=m.querySelector('#schList');
+ let dragEl=null;
+ list.addEventListener('dragstart',e=>{dragEl=e.target.closest('.sch-row');dragEl?.classList.add('dragging')});
+ list.addEventListener('dragend',()=>{dragEl?.classList.remove('dragging');dragEl=null});
+ list.addEventListener('dragover',e=>{e.preventDefault();const after=[...list.querySelectorAll('.sch-row:not(.dragging)')].find(r=>e.clientY<r.getBoundingClientRect().top+r.offsetHeight/2);if(!after)list.appendChild(dragEl);else list.insertBefore(dragEl,after)});
+ list.addEventListener('click',e=>{
+  const mv=e.target.closest('[data-mv]');if(!mv)return;
+  const row=mv.closest('.sch-row'),dir=+mv.dataset.mv;
+  if(dir<0)row.previousElementSibling&&list.insertBefore(row,row.previousElementSibling);
+  else row.nextElementSibling&&list.insertBefore(row.nextElementSibling,row);
+ });
+ m.querySelector('#schOk').onclick=()=>{
+  const checked=[...list.querySelectorAll('.sch-row')].filter(r=>r.querySelector('.sch-cb').checked);
+  const err=m.querySelector('#schErr');
+  if(!checked.length){err.hidden=false;err.innerHTML=`${ic('alert','ic-sm')} Empty Schedule — check at least one novel to create a batch.`;return}
+  const lim=+m.querySelector('#schLimit').value;
+  closeModal();
+  toast(`Schedule created — ${checked.length} novel(s), limit ${lim===0?'All pending':lim} ch/novel.`);
+  setStatus(`Scheduled ${checked.length} novel(s) for ordered translation.`);
+ };
+};
+
+/* ================= glossary ================= */
+function renderGlossary(){
+ $('#glossBody').innerHTML=state.glossary.map(r=>`<tr data-id="${r.id}" class="${state.glossSel.has(r.id)?'gsel':''}"><td class="id-cell">#${r.id}</td><td style="font-weight:600">${esc(r.en)}</td><td class="ar-cell">${esc(r.ar)}</td><td class="notes-cell">${esc(r.notes||'')}</td></tr>`).join('');
+}
+$('#glossBody').addEventListener('click',e=>{
+ const r=e.target.closest('tr');if(!r)return;
+ const id=+r.dataset.id;
+ state.glossSel.has(id)?state.glossSel.delete(id):state.glossSel.add(id);
+ renderGlossary();
+});
+$('#btnAddRule').onclick=()=>{
+ const m=openModal(`
+  <div class="m-head"><h3>Add Translation Rule</h3><button class="m-x" data-mx>${ic('x')}</button></div>
+  <div class="m-body">
+   <div class="form-2col">
+    <div class="form-row"><label class="flabel">English term</label><input class="input" id="grEn" placeholder="god tier"></div>
+    <div class="form-row"><label class="flabel">Arabic translation</label><input class="input" id="grAr" dir="rtl" style="font-family:var(--font-a);font-size:15px" placeholder="مستوى مكرم"></div>
+   </div>
+   <div class="form-row"><label class="flabel">Notes (optional)</label><input class="input" id="grNt" placeholder="context / usage"></div>
+   <div class="field-err" id="grErr" hidden></div>
+  </div>
+  <div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn" id="grOk" style="background:var(--green);color:#fff">${ic('plus')} Add Rule</button></div>`);
+ m.querySelector('#grOk').onclick=()=>{
+  const en=m.querySelector('#grEn').value.trim(),ar=m.querySelector('#grAr').value.trim(),err=m.querySelector('#grErr');
+  if(!en||!ar){err.hidden=false;err.innerHTML=`${ic('alert','ic-sm')} Validation — both English term and Arabic translation are required.`;return}
+  state.glossary.push({id:(Math.max(0,...state.glossary.map(g=>g.id))+1),en,ar,notes:m.querySelector('#grNt').value.trim()});
+  closeModal();renderGlossary();toast(`Rule added — “${en}” → “${ar}”.`);setStatus('Glossary rule added.');
+ };
+};
+$('#btnDelRules').onclick=async()=>{
+ if(!state.glossSel.size)return infoBox('No selection','Select one or more glossary rows first.','info','warn');
+ const n=state.glossSel.size;
+ const ok=await confirmBox('Delete Rules',`Delete ${n} glossary rule(s)? They will no longer be injected into prompts.`);
+ if(!ok)return;
+ state.glossary=state.glossary.filter(g=>!state.glossSel.has(g.id));state.glossSel.clear();
+ renderGlossary();toast(`Deleted ${n} rule(s).`,'err');setStatus('Glossary rules deleted.');
+};
+$('#btnSyncGloss').onclick=()=>{renderGlossary();toast(`Synced config/glossary.json — ${state.glossary.length} active rules.`);setStatus('Glossary synchronized from JSON.')};
+
+/* ================= api keys ================= */
+const mask=k=>k?k.slice(0,6)+'••••••••'+k.slice(-3):'';
+function renderProviders(){
+ $('#provWrap').innerHTML=state.providers.map(p=>`
+ <div class="card prov-card2 ${p.enabled?'':'disabled'}" data-p="${p.name}">
+  <div class="prov-head">
+   <div><div class="prov-name">${esc(p.name)}</div><div class="prov-prefix mono">${p.prefix}_API_KEY</div></div>
+   ${!p.enabled?`<span class="pill off"><i></i>Disabled</span>`:p.key?`<span class="pill ok"><i></i>Connected</span>`:`<span class="pill warn"><i></i>Not configured</span>`}
+  </div>
+  <div class="krow"><span class="klabel">API Key</span><span class="kval ${p.key?'':'unset'}" data-kv>${p.key?mask(p.key):'Not set'}</span>
+   <button class="btn btn-ghost btn-icon" data-pact="reveal" title="Show / hide">${ic('eye','ic-sm')}</button>
+   <button class="btn btn-ghost btn-icon" data-pact="copy" title="Copy">${ic('copy','ic-sm')}</button>
+   <button class="btn btn-ghost btn-icon" data-pact="editkey" title="Change key">${ic('edit','ic-sm')}</button>
+  </div>
+  <div class="brow"><span class="klabel">Base URL</span><input class="input" data-pact-input="base" value="${esc(p.base)}"></div>
+  <div class="models-label"><span>Models</span><button class="btn btn-outline btn-sm" data-pact="addmodel">${ic('plus','ic-sm')} Add Model</button></div>
+  <div class="models-panel">${p.models.map(m=>`
+   <div class="model-row" data-m="${esc(m)}"><span class="mdot"></span><span class="mname">${esc(m)}</span><span class="role-chip">Translation</span>
+    <button class="btn btn-ghost btn-icon" data-pact="testmodel" title="Test model">${ic('play','ic-sm')}</button>
+    <button class="btn btn-ghost btn-icon" data-pact="editmodel" title="Rename">${ic('edit','ic-sm')}</button>
+    <button class="btn btn-ghost btn-icon" data-pact="delmodel" title="Delete">${ic('trash','ic-sm')}</button>
+   </div>`).join('')||'<div style="color:var(--faint);font-size:12px;padding:6px">No models configured.</div>'}
+  </div>
+  <div class="pact-row">
+   <button class="btn btn-outline btn-sm" data-pact="test">${ic('play','ic-sm')} Test Provider</button>
+   <button class="btn btn-outline btn-sm" data-pact="edit">${ic('edit','ic-sm')} Edit</button>
+   <button class="btn btn-outline btn-sm" data-pact="rotate">${ic('rotate','ic-sm')} Rotate Key</button>
+   <button class="btn btn-danger btn-sm" data-pact="toggle">${ic('power','ic-sm')} ${p.enabled?'Disable':'Enable'}</button>
+  </div>
+ </div>`).join('');
+ $('#envState').innerHTML=state.envDirty?`<span class="dirty">● Unsaved changes</span> — <span class="mono">config/.env</span>`:`Loaded from <span class="mono">config/.env</span> · saved ${now()}`;
+}
+const dirty=()=>{state.envDirty=true;renderProvidersFoot()};
+function renderProvidersFoot(){
+ const el=$('#envState');
+ if(!el)return;
+ el.className=state.envDirty?'dirty':'';
+ el.innerHTML=state.envDirty
+  ?`● Unsaved changes in <span class="mono">config/.env</span>`
+  :`Loaded from <span class="mono">config/.env</span> · saved ${now()}`;
+}
+$('#provWrap').addEventListener('click',async e=>{
+ const btn=e.target.closest('[data-pact]');if(!btn)return;
+ const card=btn.closest('.prov-card2'),p=state.providers.find(x=>x.name===card.dataset.p),act=btn.dataset.pact;
+ const row=e.target.closest('.model-row');
+ if(act==='reveal'){const kv=card.querySelector('[data-kv]');const shown=kv.dataset.shown==='1';kv.dataset.shown=shown?'0':'1';kv.textContent=p.key?(shown?mask(p.key):p.key):'Not set';btn.innerHTML=ic(shown?'eye':'eyeoff','ic-sm')}
+ if(act==='copy'){
+   if(!p.key)return toast('No key set for '+p.name+'.','warn');
+   if(!navigator.clipboard)return infoBox('Clipboard unavailable','Clipboard access is unavailable in this browser context. Reveal the key and copy it manually.','alert','amber');
+   navigator.clipboard.writeText(p.key).then(
+    ()=>toast('API key copied to clipboard.','info'),
+    ()=>infoBox('Clipboard unavailable','The browser blocked clipboard access. Reveal the key and copy it manually.','alert','amber')
+   );
+  }
+ if(act==='editkey'){promptModal('Change API Key — '+p.name,'Value',p.key,v=>{p.key=v;dirty();renderProviders();toast('Key updated for '+p.name+'.')},true)}
+ if(act==='test'){
+  btn.disabled=true;btn.innerHTML=`${ic('refresh','ic-sm spin')} Testing…`;
+  setTimeout(()=>{btn.disabled=false;btn.innerHTML=`${ic('play','ic-sm')} Test Provider`;
+   p.key?toast(`${p.name} responded OK in ${rnd(180,900)} ms.`):infoBox('Test failed',`${p.name} has no API key configured. Add one in this card or via Add Provider.`,'alert','red');
+  },900);
+ }
+ if(act==='testmodel'){toast(`${p.name} · ${row?.dataset.m}: latency ${rnd(200,900)} ms, 1 token OK.`,'info')}
+ if(act==='editmodel'){promptModal('Rename model','Model name',row.dataset.m,v=>{const i=p.models.indexOf(row.dataset.m);if(i>-1)p.models[i]=v;dirty();renderProviders()})}
+ if(act==='delmodel'){const ok=await confirmBox('Delete Model',`Remove model “${row.dataset.m}” from ${p.name}?`);if(ok){p.models=p.models.filter(m=>m!==row.dataset.m);dirty();renderProviders();toast('Model removed.','err')}}
+ if(act==='addmodel'){promptModal('Add Model — '+p.name,'Model name','',v=>{p.models.push(v);dirty();renderProviders();toast('Model added to '+p.name+'.')})}
+ if(act==='rotate'){p.key=(p.prefix.toLowerCase()+'_')+Math.random().toString(36).slice(2,14)+Math.random().toString(36).slice(2,6);dirty();renderProviders();toast('API key rotated for '+p.name+'.','warn')}
+ if(act==='toggle'){p.enabled=!p.enabled;dirty();renderProviders();toast(`${p.name} ${p.enabled?'enabled':'disabled'}.`,p.enabled?'ok':'warn')}
+ if(act==='edit'){promptModal('Edit Provider — '+p.name,'Base URL',p.base,v=>{p.base=v;dirty();renderProviders();toast('Provider updated.')})}
+});
+$('#provWrap').addEventListener('change',e=>{
+ if(e.target.dataset.pactInput==='base'){const card=e.target.closest('.prov-card2');const p=state.providers.find(x=>x.name===card.dataset.p);p.base=e.target.value;dirty()}
+});
+function promptModal(title,label,val,cb,secret=false){
+ const m=openModal(`
+  <div class="m-head"><h3>${esc(title)}</h3><button class="m-x" data-mx>${ic('x')}</button></div>
+  <div class="m-body"><label class="flabel">${esc(label)}</label><input class="input" id="pmV" style="width:100%" type="${secret?'password':'text'}" value="${esc(val)}"><div class="field-err" id="pmE" hidden></div></div>
+  <div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="pmOk">${ic('check')} Save</button></div>`);
+ m.querySelector('#pmOk').onclick=()=>{const v=m.querySelector('#pmV').value.trim();if(!v){m.querySelector('#pmE').hidden=false;m.querySelector('#pmE').innerHTML=`${ic('alert','ic-sm')} Value is required.`;return}closeModal();cb(v)};
+}
+$('#btnAddProv').onclick=()=>{
+ const m=openModal(`
+  <div class="m-head"><h3>Add Provider</h3><button class="m-x" data-mx>${ic('x')}</button></div>
+  <div class="m-body">
+   <div class="form-2col">
+    <div class="form-row"><label class="flabel">Provider name</label><input class="input" id="apName" placeholder="Mistral"></div>
+    <div class="form-row"><label class="flabel">Env prefix</label><input class="input" id="apPrefix" placeholder="MISTRAL"></div>
+   </div>
+   <div class="form-row"><label class="flabel">API key</label><input class="input" id="apKey" type="password" placeholder="paste secret key"></div>
+   <div class="form-row"><label class="flabel">Base URL</label><input class="input" id="apBase" placeholder="https://api.example.com/v1"></div>
+   <div class="form-2col">
+    <div class="form-row"><label class="flabel">Default model</label><input class="input" id="apModel" placeholder="model-id"></div>
+    <div class="form-row"><label class="flabel">Source language</label><select class="input" id="apLang"><option>English</option><option>Arabic</option></select></div>
+   </div>
+   <p class="m-hint">Generates <span class="mono" style="font-size:11px">PREFIX_API_KEY</span>, <span class="mono" style="font-size:11px">PREFIX_BASE_URL</span> and <span class="mono" style="font-size:11px">PREFIX_MODEL</span> in config/.env.</p>
+   <div class="field-err" id="apErr" hidden></div>
+  </div>
+  <div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn" id="apOk" style="background:var(--green);color:#fff">${ic('plus')} Add Provider</button></div>`);
+ m.querySelector('#apOk').onclick=()=>{
+  const name=m.querySelector('#apName').value.trim();
+  let prefix=m.querySelector('#apPrefix').value.trim().toUpperCase().replace(/[^A-Z0-9_]/g,'_');
+  const base=m.querySelector('#apBase').value.trim(),err=m.querySelector('#apErr');
+  if(!name||!prefix||!base){err.hidden=false;err.innerHTML=`${ic('alert','ic-sm')} Provider name, prefix and base URL are required.`;return}
+  if(!/^https?:\/\//.test(base)){err.hidden=false;err.innerHTML=`${ic('alert','ic-sm')} Base URL must start with http(s)://`;return}
+  const model=m.querySelector('#apModel').value.trim();
+  state.providers.push({name,prefix,key:m.querySelector('#apKey').value.trim(),base,models:model?[model]:[],enabled:true});
+  dirty();closeModal();renderProviders();toast(`Provider “${name}” added (${prefix}_*).`);
+ };
+};
+$('#btnSaveAll').onclick=()=>{state.envDirty=false;renderProviders();toast('All provider settings saved to config/.env.');setStatus('Environment saved — running process updated.')};
+$('#btnReloadEnv').onclick=()=>{state.envDirty=false;renderProviders();toast('Reloaded provider settings from .env.','info')};
+
+/* ================= add website ================= */
+const METHOD_HELP={
+ http:'Fastest path for static HTML sites. Plain requests plus selectolax parsing — ideal when chapter lists render server-side.',
+ curl:'Browser-like TLS fingerprints bypass Cloudflare and anti-bot protection. Use when plain HTTP returns challenge pages.',
+ playwright:'Headless Chromium executes JavaScript, opens accordions and waits for dynamic chapter lists on protected or app-style pages.'};
+$('#wsMethodHelp').textContent=METHOD_HELP.http;
+$('#wsMethod').onchange=e=>$('#wsMethodHelp').textContent=METHOD_HELP[e.target.value];
+$('#wsUrl').addEventListener('input',e=>{
+ const u=e.target.value.toLowerCase();
+ if(/cloudflare|protected|wordpress/.test(u)){$('#wsMethod').value='curl';$('#wsMethodHelp').textContent=METHOD_HELP.curl+' (auto-suggested from URL)'}
+ else if(/app|javascript|dynamic|series/.test(u)){$('#wsMethod').value='playwright';$('#wsMethodHelp').textContent=METHOD_HELP.playwright+' (auto-suggested from URL)'}
+});
+function wsResult(cls,icon,html){const r=$('#wsResult');r.className='ws-result show '+cls;r.innerHTML=`${ic(icon)}<span>${html}</span>`}
+$('#btnCheckSite').onclick=()=>{
+ const url=$('#wsUrl').value.trim();
+ if(!/^https?:\/\//i.test(url))return wsResult('r-red','alert','Invalid URL — enter a complete http(s) address before checking.');
+ const ad=matchAdapter(url);
+ if(ad)return wsResult('r-green','check',`Recognized — handled by <b>${ad.cls}</b> (${ad.method}, source: ${ad.lang}). No new adapter needed.`);
+ wsResult('r-orange','alert','No installed adapter recognizes this URL. Generate a template below to connect this site.');
+};
+const METHOD_LABEL={http:'HTTP + selectolax',curl:'curl_cffi',playwright:'Playwright'};
+function addCustomAdapter(url){
+ let host;try{host=new URL(url).hostname}catch(e){return null}
+ const site=host.replace(/^(www\.|m\.)/,'').split('.')[0].replace(/[^a-z0-9]/gi,'').toLowerCase()||'customsite';
+ const cls=site.split(/[-_\s]+/).filter(Boolean).map(x=>x.charAt(0).toUpperCase()+x.slice(1)).join('')+'Adapter';
+ const ad={site,cls,src:'Custom',lang:$('#wsLang').value,method:METHOD_LABEL[$('#wsMethod').value],file:`backend/adapters/custom/${site}.py`};
+ if(!state.adapters.some(a=>a.site===site))state.adapters.push(ad);
+ return ad;
+}
+$('#btnGenAdapter').onclick=()=>{
+ const url=$('#wsUrl').value.trim();
+ if(!/^https?:\/\//i.test(url))return wsResult('r-red','alert','Invalid URL — a complete http(s) novel URL is required to generate a template.');
+ const existing=matchAdapter(url);
+ if(existing)return infoBox('Already supported',`An installed adapter already recognizes this URL: <b>${existing.cls}</b> (${existing.src}). No duplicate was created.`,'info','warn');
+ const ad=addCustomAdapter(url);
+ renderAdapters();
+ wsResult('r-green','check',`Template generated and installed → <span class="mono" style="font-size:11px">${ad.file}</span>. Loaded for this session.`);
+ toast(`Custom adapter “${ad.cls}” installed.`);setStatus('Custom adapter generated and loaded.');
+};
+$('#btnUpload').onclick=()=>$('#fileInput').click();
+$('#fileInput').onchange=e=>{
+ const f=e.target.files[0];e.target.value='';if(!f)return;
+ if(!f.name.endsWith('.py'))return toast('Only .py adapter files can be installed.','err');
+ const site=f.name.replace(/\.py$/,'').toLowerCase();
+ if(!state.adapters.some(a=>a.site===site))state.adapters.push({site,cls:site.split(/[-_\s]+/).filter(Boolean).map(x=>x.charAt(0).toUpperCase()+x.slice(1)).join('')+'Adapter',src:'Custom',lang:'English',method:METHOD_LABEL[$('#wsMethod').value],file:`backend/adapters/custom/${site}.py`});
+ renderAdapters();toast(`Adapter “${site}.py” installed to backend/adapters/custom.`);setStatus('Adapter file imported.');
+};
+$('#btnGhImport').onclick=()=>{
+ const u=$('#ghUrl').value.trim();
+ if(!/^(https:\/\/(github\.com|raw\.githubusercontent\.com)\/).+\.py$/.test(u))return toast('Import requires a GitHub or raw.githubusercontent.com URL ending in .py','err');
+ const site=u.split('/').pop().replace(/\.py$/,'').toLowerCase();
+ if(!state.adapters.some(a=>a.site===site))state.adapters.push({site,cls:site.split(/[-_\s]+/).filter(Boolean).map(x=>x.charAt(0).toUpperCase()+x.slice(1)).join('')+'Adapter',src:'Custom',lang:'English',method:METHOD_LABEL[$('#wsMethod').value],file:`backend/adapters/custom/${site}.py`});
+ renderAdapters();toast(`Adapter “${site}” imported from GitHub and loaded.`);setStatus('GitHub adapter imported.');
+};
+$('#btnGhSearch').onclick=()=>{window.open('https://github.com/search?q=novel+site+adapter+python&type=repositories','_blank');toast('Opening GitHub adapter search…','info')};
+
+/* ================= adapters ================= */
+function renderAdapters(){
+ $('#adpBody').innerHTML=state.adapters.map(a=>`<tr data-site="${a.site}" class="${state.adpSel===a.site?'asel':''}">
+  <td style="font-weight:600">${a.site}</td><td class="mono" style="font-size:12px">${a.cls}</td>
+  <td><span class="src-chip ${a.src==='Custom'?'src-custom':'src-builtin'}">${a.src}</span></td>
+  <td>${a.lang}</td><td style="color:var(--muted)">${a.method}</td><td class="mono" style="font-size:11px;color:var(--muted)">${a.file}</td></tr>`).join('');
+ const sel=state.adapters.find(a=>a.site===state.adpSel);
+ $('#btnAdpDelete').disabled=!(sel&&sel.src==='Custom');
+}
+$('#adpBody').addEventListener('click',e=>{
+ const r=e.target.closest('tr');if(!r)return;
+ state.adpSel=state.adpSel===r.dataset.site?null:r.dataset.site;
+ renderAdapters();
+});
+$('#btnAdpRefresh').onclick=()=>{renderAdapters();toast('Adapter registry refreshed.','info')};
+$('#btnAdpDelete').onclick=async()=>{
+ const sel=state.adapters.find(a=>a.site===state.adpSel);if(!sel||sel.src!=='Custom')return;
+ const ok=await confirmBox('Delete Custom Adapter',`Remove “${sel.cls}” and delete ${sel.file}? Novels from this site will become unsupported.`);
+ if(!ok)return;
+ state.adapters=state.adapters.filter(a=>a.site!==sel.site);state.adpSel=null;
+ renderAdapters();toast(`Custom adapter “${sel.site}” deleted.`,'err');setStatus('Custom adapter removed.');
+};
+
+/* ================= server / global keys ================= */
+$('#btnServer').onclick=()=>{
+ state.serverOn=!state.serverOn;
+ $('#btnServer').innerHTML=state.serverOn?`${ic('server')} API Server :8901 — running`:`${ic('server')} Start API Server`;
+ $('#btnServer').classList.toggle('btn-primary',state.serverOn);
+ $('#btnServer').classList.toggle('btn-ghost',!state.serverOn);
+ $('#sbServer').textContent=state.serverOn?'localhost:8901 · online':'server stopped';
+ $('#sbDot').classList.toggle('off',!state.serverOn);
+ $('#sbDot').classList.toggle('pulse',state.serverOn);
+ toast(state.serverOn?'Local API server started on port 8901.':'API server stopped.','info');
+ setStatus(state.serverOn?'API server running — localhost:8901.':'API server stopped.');
+};
+$('#sbDot').classList.add('off');
+document.addEventListener('keydown',e=>{
+ const active=document.activeElement;
+ const typing=/INPUT|TEXTAREA|SELECT/.test(active?.tagName||'');
+ const modalOpen=!$('#modalBack').hidden;
+ const libraryOpen=$('.tab-page.active')?.id==='page-library';
+ if(e.key==='Delete'&&!typing&&!modalOpen&&libraryOpen&&current()){
+  e.preventDefault();
+  deleteNovel(current());
+ }
+});
+
+/* ================= init ================= */
+renderSidebar();renderDetail();renderGlossary();renderProviders();renderAdapters();
+selectNovel('n1');
+setStatus('Ready - Add a novel URL to get started.');
+</script>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+/* Backend integration: the existing markup remains the visual source of truth. */
+(function () {
+  let bridge;
+  let ready = false;
+
+  function hydrate(snapshot) {
+    state.novels = (snapshot.novels || []).map(n => ({
+      id: String(n.id), title: n.title, author: n.author || 'Unknown author',
+      site: n.source_site, url: n.source_url, cover: n.cover_url || COVERS.quill,
+      chapters: (n.chapters || []).map(c => ({
+        dbId: c.id, num: c.index + 1, title: c.title, status: c.status,
+        has_translation: c.has_translation
+      }))
+    }));
+    state.glossary = (snapshot.glossary || []).map(r => ({
+      id: r.id, en: r.source_term, ar: r.target_term, notes: r.notes || ''
+    }));
+    state.providers = (snapshot.providers || []).map(p => ({
+      name: p.name, prefix: p.prefix, key: '', base: p.base_url || '',
+      models: p.models || [], enabled: p.configured
+    }));
+    state.adapters = (snapshot.adapters || []).map(a => ({
+      site: a.site_id, cls: a.class_name, src: a.source,
+      lang: 'English', method: 'Configured', file: ''
+    }));
+    if (state.selectedId && !current()) state.selectedId = null;
+    renderSidebar(); renderDetail(); renderGlossary(); renderProviders(); renderAdapters();
+  }
+
+  function refresh() {
+    if (!bridge) return;
+    bridge.get_snapshot(function (raw) { hydrate(JSON.parse(raw)); });
+  }
+
+  function provider() {
+    const selected = state.providers.find(p => p.name === $('#provSel')?.value);
+    return selected ? selected.prefix.toLowerCase() : 'gemini';
+  }
+  function model() { return $('#modelInp')?.value || ''; }
+  function finishMessage(kind) {
+    refresh();
+    setStatus(kind === 'scrape' ? 'Scraping complete.' : kind === 'epub' ? 'EPUB exported successfully.' : 'Translation complete.');
+    toast(kind === 'epub' ? 'EPUB build completed.' : 'Backend job completed.');
+  }
+
+  function backendScrape() {
+    const nv = current();
+    if (nv) bridge.start_scrape(Number(nv.id), function (started) {
+      if (!started) toast('A job is already running or the novel is unavailable.', 'warn');
+    });
+  }
+  function backendTranslate(selected) {
+    const nv = current(); if (!nv) return;
+    const ids = selected
+      ? nv.chapters.filter(c => state.checked.has(c.num)).map(c => c.dbId)
+      : [];
+    const done = function (started) { if (!started) toast('Unable to start translation.', 'warn'); };
+    if (selected) bridge.start_selected_translation(Number(nv.id), JSON.stringify(ids), provider(), model(), done);
+    else bridge.start_translation(Number(nv.id), provider(), model(), done);
+  }
+  function backendEpub() {
+    const nv = current();
+    if (nv) bridge.build_epub(Number(nv.id), function (started) {
+      if (!started) toast('Unable to start EPUB build.', 'warn');
+    });
+  }
+
+  window.startScrape = backendScrape;
+  window.startTranslate = backendTranslate;
+  window.startEpub = backendEpub;
+  window.deleteNovel = function (nv) {
+    if (!nv || !bridge) return;
+    if (confirm('Delete “' + nv.title + '” and all chapters?')) {
+      bridge.remove_novel(Number(nv.id), function () { refresh(); setStatus('Novel deleted.'); });
+    }
+  };
+  window.delTranslations = function () {
+    const nv = current(); if (!nv) return;
+    const ids = nv.chapters.filter(c => state.checked.has(c.num)).map(c => c.dbId);
+    if (ids.length) bridge.delete_translations(Number(nv.id), JSON.stringify(ids), function (changed) { if (changed) refresh(); });
+  };
+  window.togglePause = function () {
+    const paused = $('#btnPause')?.textContent.includes('Continue');
+    const action = paused ? bridge.resume_job : bridge.pause_job;
+    action(function (ok) {
+      if (ok) {
+        $('#btnPause').innerHTML = paused ? `${ic('pause')} Pause` : `${ic('play')} Continue`;
+        setStatus(paused ? 'Job resumed.' : 'Job paused.');
+      }
+    });
+  };
+  window.cancelJob = function () {
+    bridge.cancel_job(function (ok) { if (ok) setStatus('Stopping job...'); });
+  };
+
+  function wireBackendButtons() {
+    const providers = $('#provWrap');
+    if (providers) {
+      const cleanProviders = providers.cloneNode(true);
+      providers.replaceWith(cleanProviders);
+      cleanProviders.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-pact]');
+        if (!button) return;
+        const card = button.closest('.prov-card2');
+        const selected = state.providers.find(p => p.name === card?.dataset.p);
+        if (!selected) return;
+        const action = button.dataset.pact;
+        if (action === 'editkey' || action === 'rotate') {
+          bridge.edit_provider_key(selected.prefix);
+        } else if (action === 'addmodel') {
+          const value = prompt('Model name');
+          if (value) {
+            selected.models.push(value.trim());
+            bridge.save_provider(selected.prefix, selected.base, JSON.stringify(selected.models));
+          }
+        } else if (action === 'delmodel') {
+          const row = button.closest('.model-row');
+          if (row) {
+            selected.models = selected.models.filter(m => m !== row.dataset.m);
+            bridge.save_provider(selected.prefix, selected.base, JSON.stringify(selected.models));
+          }
+        } else if (action === 'edit') {
+          const value = prompt('Base URL', selected.base);
+          if (value) bridge.save_provider(selected.prefix, value, JSON.stringify(selected.models));
+        }
+      });
+      cleanProviders.addEventListener('change', function (event) {
+        if (event.target.dataset.pactInput !== 'base') return;
+        const card = event.target.closest('.prov-card2');
+        const selected = state.providers.find(p => p.name === card?.dataset.p);
+        if (selected) bridge.save_provider(selected.prefix, event.target.value, JSON.stringify(selected.models));
+      });
+    }
+    const addProvider = $('#btnAddProv');
+    if (addProvider) addProvider.onclick = function () { bridge.add_provider(); };
+    const saveAll = $('#btnSaveAll');
+    if (saveAll) saveAll.onclick = function () { refresh(); toast('Provider settings saved.'); };
+    const reloadEnv = $('#btnReloadEnv');
+    if (reloadEnv) reloadEnv.onclick = function () { refresh(); toast('Provider settings reloaded.', 'info'); };
+    const schedule = $('#btnSchedule');
+    if (schedule) schedule.onclick = function () {
+      const modal = openModal(`<div class="m-head"><h3>Schedule translations in order</h3><button class="m-x" data-mx>${ic('x')}</button></div><div class="m-body"><div class="sch-list">${state.novels.map(n => `<label class="sch-row"><input type="checkbox" class="sch-cb" value="${n.id}"><span class="sch-t">${esc(n.title)}</span></label>`).join('')}</div><div class="opt-panel"><label>Chapter limit per novel</label><input id="webScheduleLimit" type="number" min="0" value="1000"></div></div><div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="webScheduleStart">Create Schedule</button></div>`, true);
+      modal.querySelector('#webScheduleStart').onclick = function () {
+        const ids = [...modal.querySelectorAll('.sch-cb:checked')].map(input => Number(input.value));
+        const limit = Math.max(0, Number(modal.querySelector('#webScheduleLimit').value) || 0);
+        if (!ids.length) return toast('Select at least one novel.', 'warn');
+        bridge.start_schedule(JSON.stringify(ids), limit, provider(), model(), function (started) {
+          if (started) { closeModal(); setStatus('Translation schedule started.'); }
+          else toast('Unable to start the schedule.', 'warn');
+        });
+      };
+    };
+    const checkSite = $('#btnCheckSite');
+    if (checkSite) checkSite.onclick = function () {
+      bridge.check_adapter($('#wsUrl').value.trim(), function (raw) {
+        const result = JSON.parse(raw);
+        if (result.ok) wsResult('r-green', 'check', 'Recognized — handled by <b>' + esc(result.class_name) + '</b>.');
+        else wsResult('r-orange', 'alert', esc(result.error));
+      });
+    };
+    const generateSite = $('#btnGenAdapter');
+    if (generateSite) generateSite.onclick = function () {
+      bridge.generate_adapter($('#wsUrl').value.trim(), $('#wsMethod').value, $('#wsLang').value, function (raw) {
+        const result = JSON.parse(raw);
+        if (result.ok) { refresh(); wsResult('r-green', 'check', 'Template generated and installed.'); }
+        else wsResult('r-orange', 'alert', esc(result.error));
+      });
+    };
+    const add = $('#btnAddNovel');
+    if (add) add.onclick = function () {
+      const url = prompt('Novel URL');
+      if (url && /^https?:\/\//i.test(url)) {
+        bridge.add_novel(url, function (raw) {
+          const result = JSON.parse(raw);
+          if (result.ok) { refresh(); setStatus('Novel added.'); }
+          else toast(result.error, 'err');
+        });
+      }
+    };
+    const syncRule = $('#btnAddRule');
+    if (syncRule) syncRule.onclick = function () {
+      const en = prompt('English term'); if (!en) return;
+      const ar = prompt('Arabic translation'); if (!ar) return;
+      const result = JSON.parse(bridge.add_glossary(en, ar, prompt('Notes (optional)') || ''));
+      if (result.ok) refresh(); else toast(result.error, 'err');
+    };
+    const delRules = $('#btnDelRules');
+    if (delRules) delRules.onclick = function () {
+      state.glossSel.forEach(id => bridge.remove_glossary(Number(id)));
+      state.glossSel.clear(); refresh();
+    };
+    const server = $('#btnServer');
+    if (server) server.onclick = function () {
+      bridge.start_api_server(function (started) {
+        if (started) { state.serverOn = true; setStatus('API server started.'); toast('Local API server started.', 'info'); }
+        else toast('Unable to start the API server.', 'err');
+      });
+    };
+  }
+
+  new QWebChannel(qt.webChannelTransport, function (channel) {
+    bridge = channel.objects.novelBridge;
+    ready = true;
+    bridge.job_progress.connect(function (done, total, message) {
+      showJob(); setJob(total ? done / total * 100 : 0, message);
+    });
+    bridge.job_finished.connect(function (kind) { hideJob(); finishMessage(kind); });
+    bridge.job_error.connect(function (message) { hideJob(); refresh(); infoBox('Operation failed', esc(message), 'alert', 'red'); });
+    bridge.state_changed.connect(refresh);
+    wireBackendButtons();
+    refresh();
+  });
+})();
+</script>
+</body>
+</html>

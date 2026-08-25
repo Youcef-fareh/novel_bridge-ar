@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import (
-    QObject, QRunnable, QSettings, Qt, QThread, QThreadPool,
+    QObject, QRunnable, QSettings, Qt, QThread, QThreadPool, QUrl,
     pyqtSignal, pyqtSlot,
 )
 from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap
@@ -23,6 +23,8 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton, QSplitter,
     QSpinBox, QStatusBar, QTabWidget, QVBoxLayout, QWidget,
 )
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from backend.adapters.base import AdapterRegistry
 from backend.adapters.galaxynovels import GalaxyNovelsAdapter
@@ -51,6 +53,7 @@ from gui.widgets.website_setup import (
     WebsiteSetupWidget,
     load_custom_adapters,
 )
+from gui.web_bridge import NovelBridgeWebChannel
 
 
 
@@ -1314,6 +1317,32 @@ def run_app() -> None:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
 
-    window = MainWindow()
+    window = HtmlMainWindow()
     window.show()
     sys.exit(app.exec())
+
+
+class HtmlMainWindow(QMainWindow):
+    """Desktop shell for the backend-connected HTML frontend."""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("NovelBridge — Arabic Web Novel Translator")
+        self.setMinimumSize(1100, 700)
+        self.resize(1280, 780)
+        self._apply_icon()
+
+        self._view = QWebEngineView(self)
+        self._channel = QWebChannel(self._view.page())
+        self._bridge = NovelBridgeWebChannel(self)
+        self._channel.registerObject("novelBridge", self._bridge)
+        self._view.page().setWebChannel(self._channel)
+        self.setCentralWidget(self._view)
+
+        html_path = Path(__file__).parent.parent / "NovelBridge_fixed.html"
+        self._view.setUrl(QUrl.fromLocalFile(str(html_path.resolve())))
+
+    def _apply_icon(self) -> None:
+        icon_path = Path(__file__).parent.parent / "icon.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))

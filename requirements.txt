@@ -26,6 +26,7 @@ sqlmodel>=0.0.19
 
 # GUI
 PyQt6>=6.7.0
+PyQt6-WebEngine>=6.7.0
 
 # Utilities
 python-dotenv>=1.0.0
