@@ -403,6 +403,28 @@ class NovelBridgeWebChannel(QObject):
         self.state_changed.emit("providers")
         return True
 
+    @pyqtSlot(str, str, str, str, str, str, result=str)
+    def create_provider(self, name: str, prefix: str, api_key: str, base_url: str, model: str, language: str) -> str:
+        import re
+        name, prefix, base_url = name.strip(), prefix.strip().upper(), base_url.strip()
+        if not name or not re.fullmatch(r"[A-Z][A-Z0-9_]*", prefix) or not base_url.startswith(("http://", "https://")):
+            return json.dumps({"ok": False, "error": "Provider name, valid prefix, and HTTP(S) base URL are required."})
+        env = _read_env_file()
+        env[f"{prefix}_API_KEY"] = api_key.strip()
+        env[f"{prefix}_BASE_URL"] = base_url
+        env[f"{prefix}_MODEL"] = model.strip()
+        env[f"{prefix}_MODELS"] = model.strip()
+        env[f"{prefix}_LANGUAGE"] = language.strip() or "English"
+        try:
+            _write_env_file(env)
+        except OSError as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
+        for key, value in env.items():
+            if value:
+                os.environ[key] = value
+        self.state_changed.emit("providers")
+        return json.dumps({"ok": True})
+
     @pyqtSlot(str, result=str)
     def check_adapter(self, url: str) -> str:
         adapter = AdapterRegistry.find(url.strip())

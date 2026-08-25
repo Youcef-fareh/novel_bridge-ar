@@ -50,6 +50,21 @@ button{font-family:var(--font-u)}
 @keyframes rot{to{transform:rotate(360deg)}}
 .topline{height:3px;flex:none;background:linear-gradient(90deg,var(--teal),var(--bronze) 55%,var(--red))}
 
+body.dark{
+  --paper:#10141a; --paper2:#171d25;
+  --surface:#1b222c; --surface2:#151b23;
+  --ink:#e7edf4; --ink-soft:#c3ceda; --muted:#93a1b2; --faint:#718096;
+  --line:#2c3745; --line2:#405064;
+  --teal:#54c7af; --teal-strong:#3aa58f; --teal-soft:#173d3a;
+  --bronze:#d5a44d; --bronze-strong:#b9852d; --bronze-soft:#42351e;
+  --blue:#76a9e8; --blue-soft:#1d3048;
+  --green:#65c98b; --green-soft:#193b2a;
+  --amber:#e5b95d; --amber-soft:#45371e;
+  --red:#ef756c; --red-soft:#452523;
+  --sel:#293529;
+  --shadow:0 1px 2px rgba(0,0,0,.2),0 5px 16px rgba(0,0,0,.18);
+}
+
 /* ---------- header ---------- */
 .app-header{flex:none;height:58px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 20px;gap:14px}
 .brand{display:flex;align-items:center;gap:11px;min-width:0}
@@ -111,6 +126,12 @@ main{flex:1;min-height:0;position:relative}
 .novel-row:hover{background:var(--surface2);border-color:var(--line)}
 .novel-row.active{background:var(--sel);border-color:var(--line2);box-shadow:inset 3px 0 0 var(--bronze)}
 .ncover{width:38px;height:54px;object-fit:cover;border-radius:5px;border:1px solid var(--line2);background:var(--paper2);flex:none}
+.avatar-cover{display:grid;place-items:center;overflow:hidden;font:700 20px var(--font-d);color:var(--teal);background:var(--teal-soft);}
+.avatar-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.avatar-cover .avatar-letter{display:grid;place-items:center;width:100%;height:100%}
+.avatar-cover.has-image .avatar-letter{display:none}
+.avatar-cover.image-failed img{display:none}
+.avatar-cover.image-failed .avatar-letter{display:grid}
 .ninfo{min-width:0;flex:1}
 .ntitle{font-weight:600;font-size:12.8px;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
 .nmeta{font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px}
@@ -123,6 +144,7 @@ main{flex:1;min-height:0;position:relative}
 .empty-state h3{font:600 18px var(--font-d);color:var(--ink-soft)}
 .detail-head{display:flex;gap:16px;align-items:center;padding:16px 18px}
 .dcover{width:62px;height:90px;object-fit:cover;border-radius:7px;border:1px solid var(--line2);box-shadow:0 6px 14px rgba(60,45,15,.18);flex:none}
+.dcover.avatar-cover{font-size:30px}
 .dhead-info{flex:1;min-width:0}
 .dtitle{font:700 21px/1.25 var(--font-d);color:var(--ink);letter-spacing:-.2px}
 .dmeta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:7px;font-size:12px;color:var(--muted);align-items:center}
@@ -263,7 +285,7 @@ tr.asel{background:var(--sel)}
 .sb-right .mono{font-size:10.5px;color:var(--faint)}
 
 /* ---------- modal ---------- */
-.modal-back{position:fixed;inset:0;background:rgba(33,29,22,.44);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:90;animation:fade .16s}
+.modal-back{position:fixed;inset:0;background:rgba(33,29,22,.62);display:flex;align-items:center;justify-content:center;z-index:90}
 .modal-back[hidden]{display:none !important;}
 @keyframes fade{from{opacity:0}}
 .modal{background:var(--surface);border:1px solid var(--line2);border-radius:14px;box-shadow:0 24px 60px rgba(30,20,5,.3);width:min(560px,94vw);max-height:88vh;display:flex;flex-direction:column;animation:pop .18s}
@@ -353,6 +375,8 @@ tr.asel{background:var(--sel)}
   <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4.5 1.4-4.5-2.6-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 6h.1M9 12h.1M9 18h.1M15 6h.1M15 12h.1M15 18h.1"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.7 4.7l1.4 1.4M17.9 17.9l1.4 1.4M2.5 12h2M19.5 12h2M4.7 19.3l1.4-1.4M17.9 6.1l1.4-1.4"/></symbol>
 </svg>
 
 <div class="topline"></div>
@@ -366,6 +390,7 @@ tr.asel{background:var(--sel)}
     </div>
   </div>
   <div class="header-actions">
+    <button class="btn btn-ghost" id="btnTheme" title="Switch to dark mode"><svg class="ic"><use href="#i-moon"/></svg> Dark mode</button>
     <button class="btn btn-ghost" id="btnServer"><svg class="ic"><use href="#i-server"/></svg> Start API Server</button>
     <button class="btn btn-outline" id="btnSchedule"><svg class="ic"><use href="#i-calendar"/></svg> Schedule Translations</button>
     <button class="btn btn-primary" id="btnAddNovel"><svg class="ic"><use href="#i-plus"/></svg> Add Novel</button>
@@ -529,6 +554,13 @@ const now=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'
 const COVERS={quill:'https://image.qwenlm.ai/public_source/419a6057-894e-4cb9-983a-adeb02cb7267/15843a2e5-203a-4944-acd4-6bdaea3fcb31.png'};
 const state={selectedId:null,checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],adpSel:null,glossSel:new Set()};
 const current=()=>state.novels.find(n=>n.id===state.selectedId)||null;
+function avatarLetter(title){return Array.from(String(title||'?').trim())[0]?.toUpperCase()||'?'}
+function coverMarkup(title,url,cls){
+ const image=String(url||'').trim();
+ const imageClass=image?' has-image':'';
+ const imageTag=image?`<img src="${esc(image)}" alt="" onerror="this.parentElement.classList.add('image-failed')">`:'';
+ return`<div class="${cls} avatar-cover${imageClass}" aria-label="${esc(title)} avatar">${imageTag}<span class="avatar-letter">${esc(avatarLetter(title))}</span></div>`;
+}
 
 /* ================= status / toast ================= */
 function setStatus(m){$('#statusMsg').textContent=m}
@@ -611,7 +643,7 @@ function renderSidebar(){
  $('#novelList').innerHTML=list.length?list.map(nv=>{
   const t=nv.chapters.length,tr=nv.chapters.filter(c=>c.status==='translated').length,st=novelStatus(nv);
   return`<div class="novel-row ${nv.id===state.selectedId?'active':''}" data-id="${nv.id}" title="${esc(nv.title)} · ${esc(nv.url)} · ${st.toUpperCase()}">
-   <img class="ncover" src="${nv.cover}" alt="">
+  ${coverMarkup(nv.title,nv.cover,'ncover')}
    <div class="ninfo"><div class="ntitle">${esc(nv.title)}</div><div class="nmeta">${esc(nv.site)} · ${tr}/${t} translated</div></div>
    <span class="ndot" style="background:${stDot[st]}"></span></div>`;
  }).join(''):`<div style="text-align:center;color:var(--faint);font-size:12px;padding:22px 8px">No novels match “${esc(q)}”.</div>`;
@@ -665,7 +697,7 @@ function renderDetail(){
  const c=counts(nv),st=novelStatus(nv);
  D.innerHTML=`
  <div class="card detail-head">
-   <img class="dcover" src="${nv.cover}" alt="">
+  ${coverMarkup(nv.title,nv.cover,'dcover')}
    <div class="dhead-info">
      <div class="dtitle">${esc(nv.title)}</div>
      <div class="dmeta"><span class="au">${ic('user','ic-sm')} ${esc(nv.author)}</span><span class="au">${ic('globe','ic-sm')} ${esc(nv.site)}</span><span class="mono">${esc(nv.url)}</span></div>
@@ -1119,6 +1151,19 @@ document.addEventListener('keydown',e=>{
  }
 });
 
+/* ================= appearance ================= */
+function applyTheme(dark){
+ document.body.classList.toggle('dark',dark);
+ const button=$('#btnTheme');
+ if(button){
+  button.innerHTML=dark?`${ic('sun')} Light mode`:`${ic('moon')} Dark mode`;
+  button.title=dark?'Switch to light mode':'Switch to dark mode';
+ }
+ localStorage.setItem('novelbridge-theme',dark?'dark':'light');
+}
+$('#btnTheme').onclick=()=>applyTheme(!document.body.classList.contains('dark'));
+applyTheme(localStorage.getItem('novelbridge-theme')==='dark');
+
 /* ================= init ================= */
 renderSidebar();renderDetail();renderGlossary();renderProviders();renderAdapters();
 selectNovel('n1');
@@ -1152,6 +1197,7 @@ setStatus('Ready - Add a novel URL to get started.');
       lang: 'English', method: 'Configured', file: ''
     }));
     if (state.selectedId && !current()) state.selectedId = null;
+    if (!state.selectedId && state.novels.length) state.selectedId = String(state.novels[0].id);
     renderSidebar(); renderDetail(); renderGlossary(); renderProviders(); renderAdapters();
   }
 
@@ -1260,7 +1306,20 @@ setStatus('Ready - Add a novel URL to get started.');
       });
     }
     const addProvider = $('#btnAddProv');
-    if (addProvider) addProvider.onclick = function () { bridge.add_provider(); };
+    if (addProvider) addProvider.onclick = function () {
+      const modal = openModal(`<div class="m-head"><h3>Add Provider</h3><button class="m-x" data-mx>${ic('x')}</button></div><div class="m-body"><div class="form-2col"><div class="form-row"><label class="flabel">Provider name</label><input class="input" id="webProvName" placeholder="Mistral"></div><div class="form-row"><label class="flabel">Environment prefix</label><input class="input" id="webProvPrefix" placeholder="MISTRAL"></div></div><div class="form-row"><label class="flabel">API key</label><input class="input" id="webProvKey" type="password" placeholder="paste secret key"></div><div class="form-row"><label class="flabel">Base URL</label><input class="input" id="webProvBase" placeholder="https://api.example.com/v1"></div><div class="form-2col"><div class="form-row"><label class="flabel">Default model</label><input class="input" id="webProvModel" placeholder="model-id"></div><div class="form-row"><label class="flabel">Source language</label><select class="input" id="webProvLang"><option>English</option><option>Arabic</option></select></div></div><div class="field-err" id="webProvErr" hidden></div></div><div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="webProvOk">${ic('plus')} Add Provider</button></div>`);
+      modal.querySelector('#webProvOk').onclick = function () {
+        const value = id => modal.querySelector('#' + id).value.trim();
+        const error = modal.querySelector('#webProvErr');
+        const name = value('webProvName'), prefix = value('webProvPrefix').toUpperCase().replace(/[^A-Z0-9_]/g, '_'), base = value('webProvBase');
+        if (!name || !/^[A-Z][A-Z0-9_]*$/.test(prefix) || !/^https?:\/\//i.test(base)) { error.hidden = false; error.textContent = 'Provider name, valid prefix, and HTTP(S) base URL are required.'; return; }
+        bridge.create_provider(name, prefix, value('webProvKey'), base, value('webProvModel'), value('webProvLang'), function (raw) {
+          const result = JSON.parse(raw);
+          if (!result.ok) { error.hidden = false; error.textContent = result.error; return; }
+          closeModal(); refresh(); toast('Provider added.');
+        });
+      };
+    };
     const saveAll = $('#btnSaveAll');
     if (saveAll) saveAll.onclick = function () { refresh(); toast('Provider settings saved.'); };
     const reloadEnv = $('#btnReloadEnv');
@@ -1296,21 +1355,30 @@ setStatus('Ready - Add a novel URL to get started.');
     };
     const add = $('#btnAddNovel');
     if (add) add.onclick = function () {
-      const url = prompt('Novel URL');
-      if (url && /^https?:\/\//i.test(url)) {
+      const modal = openModal(`<div class="m-head"><h3>Add Novel from URL</h3><button class="m-x" data-mx>${ic('x')}</button></div><div class="m-body"><label class="flabel">Novel URL</label><input class="input" id="webNovelUrl" placeholder="https://example.com/novel/..." style="width:100%"><div class="field-err" id="webNovelErr" hidden></div></div><div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="webNovelOk">${ic('plus')} Add Novel</button></div>`);
+      modal.querySelector('#webNovelOk').onclick = function () {
+        const url = modal.querySelector('#webNovelUrl').value.trim(), error = modal.querySelector('#webNovelErr');
+        if (!/^https?:\/\//i.test(url)) { error.hidden = false; error.textContent = 'Enter a valid URL starting with http:// or https://.'; return; }
         bridge.add_novel(url, function (raw) {
           const result = JSON.parse(raw);
-          if (result.ok) { refresh(); setStatus('Novel added.'); }
-          else toast(result.error, 'err');
+          if (result.ok) { closeModal(); refresh(); setStatus('Novel added.'); }
+          else { error.hidden = false; error.textContent = result.error; }
         });
-      }
+      };
     };
     const syncRule = $('#btnAddRule');
     if (syncRule) syncRule.onclick = function () {
-      const en = prompt('English term'); if (!en) return;
-      const ar = prompt('Arabic translation'); if (!ar) return;
-      const result = JSON.parse(bridge.add_glossary(en, ar, prompt('Notes (optional)') || ''));
-      if (result.ok) refresh(); else toast(result.error, 'err');
+      const modal = openModal(`<div class="m-head"><h3>Add Translation Rule</h3><button class="m-x" data-mx>${ic('x')}</button></div><div class="m-body"><div class="form-2col"><div class="form-row"><label class="flabel">English term</label><input class="input" id="webRuleEn" placeholder="god tier"></div><div class="form-row"><label class="flabel">Arabic translation</label><input class="input" id="webRuleAr" dir="rtl" placeholder="مستوى مكرم"></div></div><div class="form-row"><label class="flabel">Notes (optional)</label><input class="input" id="webRuleNotes" placeholder="context / usage"></div><div class="field-err" id="webRuleErr" hidden></div></div><div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="webRuleOk">${ic('plus')} Add Rule</button></div>`);
+      modal.querySelector('#webRuleOk').onclick = function () {
+        const value = id => modal.querySelector('#' + id).value.trim();
+        const error = modal.querySelector('#webRuleErr');
+        if (!value('webRuleEn') || !value('webRuleAr')) { error.hidden = false; error.textContent = 'Both English term and Arabic translation are required.'; return; }
+        bridge.add_glossary(value('webRuleEn'), value('webRuleAr'), value('webRuleNotes'), function (raw) {
+          const result = JSON.parse(raw);
+          if (result.ok) { closeModal(); refresh(); toast('Glossary rule added.'); }
+          else { error.hidden = false; error.textContent = result.error; }
+        });
+      };
     };
     const delRules = $('#btnDelRules');
     if (delRules) delRules.onclick = function () {

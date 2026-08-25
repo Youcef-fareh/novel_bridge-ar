@@ -41,15 +41,26 @@ class WuxiaSpotAdapter(SiteAdapter):
         parsed = urlparse(url)
         return parsed.netloc.lower().removeprefix("www.") == "wuxiaspot.com" and "/novel/" in parsed.path.lower()
 
+    @staticmethod
+    def _extract_cover(html: str) -> Optional[str]:
+        selectors = [
+            ".fixed-img img", ".novel-cover img", "img[itemprop=image]",
+            "meta[property='og:image']",
+        ]
+        for attribute in ("data-src", "data-original", "data-lazy-src", "content", "src"):
+            cover = parse_attr(html, selectors, attribute)
+            if cover:
+                return urljoin(_BASE, cover)
+        return None
+
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
         html = await fetch_html(novel_url, _SITE_ID)
         title = parse_text(html, ["h1.novel-title", "h1[itemprop=name]", "h1"]) or "Unknown Title"
-        cover = parse_attr(html, [".fixed-img img", ".novel-cover img", "img[itemprop=image]"], "data-src")
-        cover = cover or parse_attr(html, [".fixed-img img", ".novel-cover img", "img[itemprop=image]"], "src")
+        cover = self._extract_cover(html)
         return NovelMeta(
             title=title,
             author=parse_text(html, [".author a", ".author", "[rel=author]"]),
-            cover_url=urljoin(_BASE, cover) if cover else None,
+            cover_url=cover,
             description=parse_text(html, [".summary .content", ".summary", ".description"]),
             source_url=novel_url,
             source_site=_SITE_ID,
@@ -63,9 +74,18 @@ class WuxiaSpotAdapter(SiteAdapter):
             return self._ordered(refs)
 
         page_urls = self._pagination_urls(html, novel_id)
-        for page_url in page_urls:
+        fetched_pages = set()
+        while page_urls:
+            page_url = page_urls.pop(0)
+            if page_url in fetched_pages:
+                continue
+            fetched_pages.add(page_url)
             page_html = await fetch_html(page_url, _SITE_ID)
-            refs.extend(self._extract_chapters(page_html, page_url))
+            page_refs = self._extract_chapters(page_html, page_url)
+            refs.extend(page_refs)
+            for discovered_url in self._pagination_urls(page_html, novel_id):
+                if discovered_url not in fetched_pages and discovered_url not in page_urls:
+                    page_urls.append(discovered_url)
 
         by_url: Dict[str, ChapterRef] = {ref.source_url: ref for ref in refs}
         return self._ordered(list(by_url.values()))

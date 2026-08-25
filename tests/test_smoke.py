@@ -18,6 +18,14 @@ def test_models_import():
     assert Job
 
 
+def test_wuxiaspot_cover_extraction():
+    from backend.adapters.wuxiaspot import WuxiaSpotAdapter
+
+    html = '<meta property="og:image" content="/covers/example.jpg">'
+    adapter = WuxiaSpotAdapter()
+    assert adapter._extract_cover(html) == "https://www.wuxiaspot.com/covers/example.jpg"
+
+
 # ── Test: database init ────────────────────────────────────────────────────────
 def test_db_init(tmp_path, monkeypatch):
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
