@@ -1,4 +1,11 @@
 {
+  "wuxiaspot": {
+    "base_url": "https://www.wuxiaspot.com",
+    "request_delay_min": 0.2,
+    "request_delay_max": 0.6,
+    "use_curl_cffi": true,
+    "respect_robots_txt": false
+  },
   "novelfire": {
     "base_url": "https://novelfire.net",
     "selectors": {

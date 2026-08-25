@@ -28,7 +28,7 @@ from backend.adapters.base import AdapterRegistry
 from backend.adapters.galaxynovels import GalaxyNovelsAdapter
 from backend.adapters.novelfire import NovelFireAdapter
 from backend.adapters.novelphoenix import NovelPhoenixAdapter
-from backend.adapters.wtrlab import WTRLabAdapter
+from backend.adapters.wuxiaspot import WuxiaSpotAdapter
 from backend.database import (
     create_novel, delete_novel, get_all_novels, get_chapters,
     get_novel, get_pending_translation_chapters, init_db, update_chapter, update_novel,
@@ -628,7 +628,23 @@ class NovelDetailPanel(QWidget):
             provider.casefold(): list(models)
             for provider, models in models_by_provider.items()
         }
+        current_provider = self.combo_provider.currentData()
         current_model = self.combo_model.currentText().strip()
+        self.combo_provider.blockSignals(True)
+        try:
+            known_providers = {
+                self.combo_provider.itemData(index)
+                for index in range(self.combo_provider.count())
+            }
+            for provider_key in self._configured_models:
+                if provider_key not in known_providers:
+                    display_name = provider_key.replace("_", " ").title()
+                    self.combo_provider.addItem(display_name, provider_key)
+            provider_index = self.combo_provider.findData(current_provider)
+            if provider_index >= 0:
+                self.combo_provider.setCurrentIndex(provider_index)
+        finally:
+            self.combo_provider.blockSignals(False)
         self._populate_models_for_current_provider(current_model)
 
     def get_selected_provider(self) -> str:
@@ -1274,9 +1290,9 @@ def run_app() -> None:
     # Initialise database + register adapters before Qt starts
     init_db()
     AdapterRegistry.register(NovelFireAdapter())
-    AdapterRegistry.register(WTRLabAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
+    AdapterRegistry.register(WuxiaSpotAdapter())
     load_custom_adapters()
 
     app = QApplication(sys.argv)

@@ -936,6 +936,24 @@ class ProviderSettingsWidget(QWidget):
         for key in list(os.environ):
             if key.endswith(("_API_KEY", "_MODEL", "_BASE_URL", "_MODELS")) and key not in self._env:
                 self._env[key] = os.environ[key]
+        self._provider_groups = list(_PROVIDER_GROUPS)
+        known_prefixes = {
+            prefix for _name, prefix, _key, _base, _default_base in self._provider_groups
+        }
+        suffixes = ("_API_KEY", "_BASE_URL", "_MODELS", "_MODEL")
+        configured_prefixes = set()
+        for key in self._env:
+            for suffix in suffixes:
+                if key.endswith(suffix):
+                    prefix = key[: -len(suffix)]
+                    if not prefix.endswith(("_API", "_BASE")):
+                        configured_prefixes.add(prefix)
+                    break
+        for prefix in sorted(configured_prefixes - known_prefixes):
+            provider_name = prefix.replace("_", " ").title()
+            self._provider_groups.append(
+                (provider_name, prefix, f"{prefix}_API_KEY", f"{prefix}_BASE_URL", "")
+            )
         self._models = {}
         for _name, prefix, _key, _base, _default_base in self._provider_groups:
             models_key = f"{prefix}_MODELS"
@@ -988,6 +1006,7 @@ class ProviderSettingsWidget(QWidget):
         self._models[prefix] = [model] if model else []
         self._env[f"{prefix}_LANGUAGE"] = language
         self._render_cards()
+        self.models_changed.emit(self.get_models())
         self.footer_status.setText("Unsaved changes")
 
     def _make_provider_card(self, provider: str, prefix: str, key_var: str, base_var: str, default_base: str) -> QWidget:

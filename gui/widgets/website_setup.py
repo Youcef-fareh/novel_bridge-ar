@@ -33,7 +33,8 @@ from backend.adapters.base import AdapterRegistry, SiteAdapter
 
 
 _CUSTOM_DIR = Path(__file__).parent.parent.parent / "backend" / "adapters" / "custom"
-_BUILTIN_SITE_IDS = {"novelfire", "wtrlab", "novelphoenix", "galaxynovels"}
+_BUILTIN_SITE_IDS = {"novelfire", "novelphoenix", "galaxynovels", "wuxiaspot"}
+_HIDDEN_SITE_IDS = {"galaxynovels"}
 
 
 def _adapter_template(site_id: str, class_name: str, domain: str, method: str, language: str) -> str:
@@ -461,6 +462,8 @@ class AdapterRegistryWidget(QWidget):
     def refresh(self) -> None:
         self.table.setRowCount(0)
         for site_id, adapter in sorted(AdapterRegistry._adapters.items()):
+            if site_id in _HIDDEN_SITE_IDS:
+                continue
             row = self.table.rowCount()
             self.table.insertRow(row)
             source = "Built-in" if site_id in _BUILTIN_SITE_IDS else "Custom"
@@ -483,7 +486,7 @@ class AdapterRegistryWidget(QWidget):
                 language = "Arabic" if getattr(adapter, "is_native_arabic", False) else "English"
             else:
                 language = "Unknown"
-        if site_id in {"wtrlab", "galaxynovels"}:
+        if site_id in {"galaxynovels"}:
             return language, "Playwright"
         if site_id in {"novelfire", "novelphoenix"}:
             return language, "curl_cffi"
