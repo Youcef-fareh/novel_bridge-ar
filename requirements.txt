@@ -17,6 +17,11 @@ openai>=1.0.0
 # EPUB generation
 ebooklib>=0.18
 
+# Google Drive export
+google-api-python-client>=2.149.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.1
+
 # Backend API
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0

@@ -235,6 +235,32 @@ class NovelBridgeWebChannel(QObject):
     def build_epub(self, novel_id: int) -> bool:
         return self._start_job("epub", novel_id)
 
+    @pyqtSlot(result=bool)
+    def upload_epubs_to_drive(self) -> bool:
+        if self._job_control is not None:
+            return False
+        from backend.google_drive import upload_epubs
+
+        self._job_control = JobControl()
+        control = self._job_control
+
+        async def work():
+            if control.is_cancelled:
+                return 0
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                upload_epubs,
+                Path(os.getenv("OUTPUT_DIR", "output")),
+                self._progress,
+            )
+
+        worker = _AsyncWorker(work)
+        worker.signals.finished.connect(lambda count: self._job_done("drive", count))
+        worker.signals.cancelled.connect(lambda: self._job_done("cancelled"))
+        worker.signals.error.connect(self._job_failed)
+        self._thread_pool.start(worker)
+        return True
+
     @pyqtSlot(str, int, str, str, result=bool)
     def start_schedule(self, novel_ids_json: str, chapter_limit: int, provider: str, model: str) -> bool:
         if self._job_control is not None:
@@ -303,7 +329,7 @@ class NovelBridgeWebChannel(QObject):
     def _progress(self, done: int, total: int, message: str) -> None:
         self.job_progress.emit(done, total, message)
 
-    def _job_done(self, kind: str) -> None:
+    def _job_done(self, kind: str, result=None) -> None:
         self._job_control = None
         self.job_finished.emit(kind)
         self.state_changed.emit("novels")

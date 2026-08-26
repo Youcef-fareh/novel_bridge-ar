@@ -17,8 +17,14 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    env:
+      # PyQt is imported by bridge tests on the headless Linux runner.
+      QT_QPA_PLATFORM: offscreen
+
     steps:
     - uses: actions/checkout@v4
+    - name: Install Qt runtime libraries
+      run: sudo apt-get update && sudo apt-get install --yes libegl1
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:

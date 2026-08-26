@@ -70,6 +70,19 @@ Open **Glossary**, add the source term and its preferred Arabic translation, the
 
 When the required chapters are translated, click **Build EPUB**. Books are saved in `output/` with the novel title as the filename. Only successfully translated chapters are included.
 
+### 6. Save EPUBs to Google Drive
+
+The **Save All to Google Drive** button uploads every `.epub` file in `output/` to a `NovelBridge AR` folder in the signed-in Google Drive. Existing files with the same name are updated instead of duplicated.
+
+Before the first upload:
+
+1. Enable the Google Drive API in Google Cloud Console.
+2. Create OAuth credentials for a **Desktop app** and download the client JSON file.
+3. Place it at `config/google_client_secret.json`, or set `GOOGLE_DRIVE_CREDENTIALS_FILE` in `.env`.
+4. Click **Save All to Google Drive** and complete the browser sign-in. The app caches the refresh token locally for later uploads.
+
+The app requests only the `drive.file` permission, which allows it to create and update files managed by NovelBridge. No Google password is entered into NovelBridge.
+
 ### Troubleshooting
 
 | Error or symptom | What to do |
@@ -82,6 +95,8 @@ When the required chapters are translated, click **Build EPUB**. Books are saved
 | Scrape/import fails | Confirm the URL is supported and opens in a browser. Retry later if the site is unavailable. Site selectors are in `config/sites.json`; do not bypass access controls. |
 | Application does not start | Activate `.venv`, reinstall with `python -m pip install -r requirements.txt`, install the browser with `python -m playwright install`, then run `python run_gui.py`. |
 | EPUB is missing chapters | Check chapter statuses, retry failed chapters, and build the EPUB again. |
+| Google Drive OAuth file not found | Download a Desktop OAuth client JSON, place it at `config/google_client_secret.json`, or configure `GOOGLE_DRIVE_CREDENTIALS_FILE`. |
+| Google Drive sign-in or upload fails | Confirm the Drive API is enabled, finish the browser consent flow, and check your internet connection. |
 
 For development checks, run `pytest` from the project root. Use the tool only for novels and websites you are authorized to access and translate. Provider, website, and third-party content terms still apply; the MIT license covers this project's source code only.
 

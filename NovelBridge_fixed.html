@@ -781,6 +781,7 @@ function renderDetail(){
   <button class="btn btn-outline" id="btnTransSel">${ic('check')} ${t('translateSelected')}</button>
   <button class="btn btn-danger" id="btnDelTrans">${ic('trash')} ${t('deleteTranslation')}</button>
   <button class="btn btn-bronze" id="btnEpub">${ic('epub')} ${t('buildEpub')}</button>
+  <button class="btn btn-outline" id="btnDrive">${ic('upload')} Save All to Google Drive</button>
   <button class="btn btn-danger" id="btnDelNovel">${ic('trash')} ${t('deleteNovel')}</button>
  </div>`;
  syncModels();renderChapters();refreshControls();
@@ -814,6 +815,7 @@ function refreshControls(){
  el('btnTransSel').disabled=job||!chkScraped;
  el('btnDelTrans').disabled=job||!chkTrans;
  el('btnEpub').disabled=job||c.translated===0;
+ el('btnDrive').disabled=job;
  el('btnDelNovel').disabled=job;
  $('#btnLibDelete').disabled=!nv;
 }
@@ -825,6 +827,7 @@ $('#libDetail').addEventListener('click',e=>{
  if(e.target.closest('#btnTransAll'))return startTranslate(false);
  if(e.target.closest('#btnTransSel'))return startTranslate(true);
  if(e.target.closest('#btnEpub'))return startEpub();
+ if(e.target.closest('#btnDrive'))return startDriveUpload();
  if(e.target.closest('#btnDelNovel'))return deleteNovel(current());
  if(e.target.closest('#btnDelTrans'))return delTranslations();
  if(e.target.closest('#btnPause'))return togglePause();
@@ -1288,9 +1291,16 @@ setStatus('Ready - Add a novel URL to get started.');
     });
   }
 
+  function backendDriveUpload() {
+    bridge.upload_epubs_to_drive(function (started) {
+      if (!started) toast('A job is already running.', 'warn');
+    });
+  }
+
   window.startScrape = backendScrape;
   window.startTranslate = backendTranslate;
   window.startEpub = backendEpub;
+  window.startDriveUpload = backendDriveUpload;
   window.deleteNovel = function (nv) {
     if (!nv || !bridge) return;
     if (confirm('Delete “' + nv.title + '” and all chapters?')) {
