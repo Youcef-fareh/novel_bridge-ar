@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -46,7 +47,13 @@ from PyQt6.QtWidgets import (
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-ENV_FILE = Path(__file__).parent.parent.parent / ".env"
+def _application_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).parent.parent.parent
+
+
+ENV_FILE = _application_dir() / ".env"
 
 API_KEY_DEFS: List[tuple] = [
     (

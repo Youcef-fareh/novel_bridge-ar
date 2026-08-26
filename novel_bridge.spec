@@ -17,6 +17,7 @@ datas = []
 # GUI stylesheet & other resources
 datas += [("gui/resources", "gui/resources")]
 datas += [("NovelBridge_fixed.html", ".")]
+datas += [(".env.example", ".")]
 
 # App icon — bundled so the frozen exe can load it at runtime
 datas += [("icon.ico", ".")]

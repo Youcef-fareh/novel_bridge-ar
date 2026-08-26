@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import QDialog, QInputDialog, QMessageBox
+from PyQt6.QtWidgets import QDialog, QInputDialog, QLineEdit, QMessageBox
 
 from backend.adapters.base import AdapterRegistry
 from backend.database import (
@@ -26,6 +26,7 @@ from backend.database import (
 )
 from backend.models import ChapterStatus
 from backend.pipeline import JobControl, run_epub_job, run_scrape_job, run_translation_job
+from backend.translation import GeminiProvider, GroqProvider, OrcaRouterProvider, TokenRouterProvider
 from gui.widgets.api_keys import ENV_FILE, _PROVIDER_GROUPS, _read_env_file, _write_env_file
 
 
@@ -347,7 +348,12 @@ class NovelBridgeWebChannel(QObject):
 
     @pyqtSlot(str, result=bool)
     def edit_provider_key(self, prefix: str) -> bool:
-        value, ok = QInputDialog.getText(self.parent(), f"API Key - {prefix}", "API key:", QInputDialog.InputMode.Text)
+        value, ok = QInputDialog.getText(
+            self.parent(),
+            f"API Key - {prefix}",
+            "API key:",
+            QLineEdit.EchoMode.Normal,
+        )
         if not ok:
             return False
         env = _read_env_file()
@@ -356,6 +362,22 @@ class NovelBridgeWebChannel(QObject):
         for key, item in env.items():
             if item:
                 os.environ[key] = item
+        self.state_changed.emit("providers")
+        return True
+
+    @pyqtSlot(str, str, result=bool)
+    def save_provider_key(self, prefix: str, value: str) -> bool:
+        env = _read_env_file()
+        env[f"{prefix}_API_KEY"] = value.strip()
+        try:
+            _write_env_file(env)
+        except OSError:
+            return False
+        for key, item in env.items():
+            if item:
+                os.environ[key] = item
+            else:
+                os.environ.pop(key, None)
         self.state_changed.emit("providers")
         return True
 
@@ -368,8 +390,10 @@ class NovelBridgeWebChannel(QObject):
         env = _read_env_file()
         env[f"{prefix}_BASE_URL"] = base_url.strip()
         env[f"{prefix}_MODELS"] = ",".join(models)
-        if models and not env.get(f"{prefix}_MODEL"):
+        if models and env.get(f"{prefix}_MODEL") not in models:
             env[f"{prefix}_MODEL"] = models[0]
+        elif not models:
+            env.pop(f"{prefix}_MODEL", None)
         try:
             _write_env_file(env)
         except OSError:
@@ -379,6 +403,34 @@ class NovelBridgeWebChannel(QObject):
                 os.environ[key] = value
         self.state_changed.emit("providers")
         return True
+
+    @pyqtSlot(str, str, result=str)
+    def test_provider(self, prefix: str, model: str) -> str:
+        """Make a minimal live request to verify provider credentials and model."""
+        provider_classes = {
+            "gemini": GeminiProvider,
+            "groq": GroqProvider,
+            "tokenrouter": TokenRouterProvider,
+            "orcarouter": OrcaRouterProvider,
+        }
+        provider_class = provider_classes.get(prefix.casefold().strip())
+        if provider_class is None:
+            return json.dumps({"ok": False, "error": f"Unsupported provider: {prefix}."})
+
+        provider = provider_class(model=model.strip() or None)
+        if not provider.is_available():
+            return json.dumps({"ok": False, "error": f"{prefix} API key is not configured."})
+
+        selected_model = model.strip() or getattr(provider, "_model", "")
+        try:
+            response = provider._call_api(
+                "Reply with the single word OK.",
+                "Reply with the single word OK.",
+                selected_model,
+            )
+            return json.dumps({"ok": bool(response.strip()), "model": selected_model})
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": str(exc)})
 
     @pyqtSlot(result=bool)
     def add_provider(self) -> bool:

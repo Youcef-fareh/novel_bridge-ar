@@ -269,6 +269,39 @@ def test_rate_limit_error_detection():
     assert not _is_rate_limit_error(RuntimeError("Model not found"))
 
 
+def test_web_bridge_provider_management(monkeypatch, tmp_path):
+    import gui.web_bridge as bridge_module
+    import gui.widgets.api_keys as api_keys_module
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "TOKENROUTER_API_KEY=test-key\n"
+        "TOKENROUTER_MODEL=old-model\n"
+        "TOKENROUTER_MODELS=old-model,second-model\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(bridge_module, "ENV_FILE", env_file)
+    monkeypatch.setattr(api_keys_module, "ENV_FILE", env_file)
+    channel = bridge_module.NovelBridgeWebChannel()
+
+    assert channel.save_provider("TOKENROUTER", "https://api.tokenrouter.com/v1", '["renamed-model"]')
+    saved = env_file.read_text(encoding="utf-8")
+    assert "TOKENROUTER_MODEL=renamed-model" in saved
+    assert "TOKENROUTER_MODELS=renamed-model" in saved
+
+    class UnconfiguredProvider:
+        def __init__(self, model=None):
+            self._model = model
+
+        def is_available(self):
+            return False
+
+    monkeypatch.setattr(bridge_module, "TokenRouterProvider", UnconfiguredProvider)
+    result = channel.test_provider("TOKENROUTER", "renamed-model")
+    assert '"ok": false' in result
+    assert "not configured" in result.lower()
+
+
 def test_gemini_provider_uses_instance_key(monkeypatch):
     import sys
     import types

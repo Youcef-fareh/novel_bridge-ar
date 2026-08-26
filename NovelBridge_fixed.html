@@ -73,6 +73,7 @@ body.dark{
 .brand-name em{font-style:italic;color:var(--teal);font-weight:600}
 .tagline{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:1px}
 .header-actions{display:flex;align-items:center;gap:9px}
+.language-select{height:36px;padding:0 10px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--ink-soft);font:600 12px var(--font-u);cursor:pointer}
 
 /* ---------- buttons ---------- */
 .btn{height:36px;padding:0 14px;border-radius:9px;border:1px solid transparent;font-weight:600;font-size:12.8px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;transition:transform .12s,box-shadow .12s,background .15s,border-color .15s,color .15s;background:var(--paper2);color:var(--ink-soft);white-space:nowrap}
@@ -100,6 +101,10 @@ body.dark{
 .tab-btn.active{color:var(--ink)}
 .tab-btn.active .ic{color:var(--teal)}
 .tab-btn.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2.5px;border-radius:2px;background:var(--bronze)}
+body.rtl{direction:rtl}
+body.rtl .app-header,body.rtl .header-actions,body.rtl .brand,body.rtl .tabs{direction:rtl}
+body.rtl .tab-page,body.rtl .card,body.rtl .help-content{text-align:right}
+body.rtl .help-step{border-left:0;border-right:3px solid var(--teal)}
 
 /* ---------- layout ---------- */
 main{flex:1;min-height:0;position:relative}
@@ -107,6 +112,8 @@ main{flex:1;min-height:0;position:relative}
 .tab-page.active{display:block}
 #page-library.active{display:flex;overflow:hidden}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.help-content{max-width:980px;margin:0 auto}.help-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}.help-step{padding:20px;border-left:3px solid var(--teal)}.help-step h3,.help-notes h3{font:600 17px var(--font-d);margin-bottom:7px;color:var(--ink)}.help-step p,.help-notes p{color:var(--ink-soft);line-height:1.7}.help-notes{padding:20px;margin-top:14px}.help-notes h3{color:var(--bronze-strong)}
+.help-code{margin-top:12px;padding:12px 14px;border-radius:8px;background:var(--paper2);color:var(--ink-soft);font:12px/1.9 var(--font-m);overflow:auto}.help-code b{color:var(--teal-strong)}
 
 /* ---------- library ---------- */
 .library-grid{display:flex;gap:16px;width:100%;height:100%;min-height:0}
@@ -330,6 +337,9 @@ tr.asel{background:var(--sel)}
 #ctxMenu button:hover{background:var(--red-soft)}
 
 @media (max-width:980px){
+  .app-header{height:auto;min-height:58px;flex-wrap:wrap;padding:10px 14px}
+  .header-actions{flex-wrap:wrap;justify-content:flex-end}
+  .help-grid{grid-template-columns:1fr}
   .library-grid{flex-direction:column}
   .lib-sidebar{width:100%;max-height:280px}
   .ws-grid{grid-template-columns:1fr}
@@ -390,19 +400,21 @@ tr.asel{background:var(--sel)}
     </div>
   </div>
   <div class="header-actions">
-    <button class="btn btn-ghost" id="btnTheme" title="Switch to dark mode"><svg class="ic"><use href="#i-moon"/></svg> Dark mode</button>
-    <button class="btn btn-ghost" id="btnServer"><svg class="ic"><use href="#i-server"/></svg> Start API Server</button>
-    <button class="btn btn-outline" id="btnSchedule"><svg class="ic"><use href="#i-calendar"/></svg> Schedule Translations</button>
-    <button class="btn btn-primary" id="btnAddNovel"><svg class="ic"><use href="#i-plus"/></svg> Add Novel</button>
+    <select class="language-select" id="languageSelect" aria-label="Language"><option value="en">English</option><option value="ar">العربية</option></select>
+    <button class="btn btn-ghost" id="btnTheme" title="Switch to dark mode"><svg class="ic"><use href="#i-moon"/></svg> <span data-i18n="darkMode">Dark mode</span></button>
+    <button class="btn btn-ghost" id="btnServer"><svg class="ic"><use href="#i-server"/></svg> <span data-i18n="startServer">Start API Server</span></button>
+    <button class="btn btn-outline" id="btnSchedule"><svg class="ic"><use href="#i-calendar"/></svg> <span data-i18n="schedule">Schedule Translations</span></button>
+    <button class="btn btn-primary" id="btnAddNovel"><svg class="ic"><use href="#i-plus"/></svg> <span data-i18n="addNovel">Add Novel</span></button>
   </div>
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="library"><svg class="ic"><use href="#i-books"/></svg> Library</button>
-  <button class="tab-btn" data-tab="glossary"><svg class="ic"><use href="#i-book-open"/></svg> Glossary</button>
-  <button class="tab-btn" data-tab="api"><svg class="ic"><use href="#i-key"/></svg> API Keys</button>
-  <button class="tab-btn" data-tab="website"><svg class="ic"><use href="#i-globe"/></svg> Add Website</button>
-  <button class="tab-btn" data-tab="adapters"><svg class="ic"><use href="#i-plug"/></svg> Adapters</button>
+  <button class="tab-btn active" data-tab="library"><svg class="ic"><use href="#i-books"/></svg> <span data-i18n="library">Library</span></button>
+  <button class="tab-btn" data-tab="glossary"><svg class="ic"><use href="#i-book-open"/></svg> <span data-i18n="glossary">Glossary</span></button>
+  <button class="tab-btn" data-tab="api"><svg class="ic"><use href="#i-key"/></svg> <span data-i18n="apiKeys">API Keys</span></button>
+  <button class="tab-btn" data-tab="website"><svg class="ic"><use href="#i-globe"/></svg> <span data-i18n="addWebsite">Add Website</span></button>
+  <button class="tab-btn" data-tab="adapters"><svg class="ic"><use href="#i-plug"/></svg> <span data-i18n="adapters">Adapters</span></button>
+  <button class="tab-btn" data-tab="help"><svg class="ic"><use href="#i-info"/></svg> <span data-i18n="help">Help</span></button>
 </nav>
 
 <main>
@@ -410,7 +422,7 @@ tr.asel{background:var(--sel)}
   <section class="tab-page active" id="page-library">
     <div class="library-grid">
       <aside class="lib-sidebar">
-        <div class="side-head"><svg class="ic"><use href="#i-books"/></svg> Library</div>
+        <div class="side-head"><svg class="ic"><use href="#i-books"/></svg> <span data-i18n="library">Library</span></div>
         <div class="search-wrap" id="searchWrap">
           <svg class="ic"><use href="#i-search"/></svg>
           <input id="novelSearch" placeholder="Search novels by title or author…" autocomplete="off">
@@ -418,8 +430,8 @@ tr.asel{background:var(--sel)}
         </div>
         <div class="novel-list" id="novelList"></div>
         <div class="side-actions">
-          <button class="btn btn-danger btn-sm" id="btnLibDelete"><svg class="ic ic-sm"><use href="#i-trash"/></svg> Delete</button>
-          <button class="btn btn-outline btn-sm" id="btnLibRefresh"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> Refresh</button>
+          <button class="btn btn-danger btn-sm" id="btnLibDelete"><svg class="ic ic-sm"><use href="#i-trash"/></svg> <span data-i18n="delete">Delete</span></button>
+          <button class="btn btn-outline btn-sm" id="btnLibRefresh"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> <span data-i18n="refresh">Refresh</span></button>
         </div>
       </aside>
       <div class="lib-detail" id="libDetail"></div>
@@ -429,11 +441,11 @@ tr.asel{background:var(--sel)}
   <!-- ============ GLOSSARY ============ -->
   <section class="tab-page" id="page-glossary">
     <div class="page-head">
-      <div class="page-title"><svg class="ic ic-lg"><use href="#i-book-open"/></svg> Translation Glossary</div>
+      <div class="page-title"><svg class="ic ic-lg"><use href="#i-book-open"/></svg> <span data-i18n="translationGlossary">Translation Glossary</span></div>
       <div class="head-actions">
-        <button class="btn btn-outline" id="btnSyncGloss"><svg class="ic"><use href="#i-refresh"/></svg> Sync from JSON</button>
-        <button class="btn btn-primary" id="btnAddRule" style="background:var(--green)"><svg class="ic"><use href="#i-plus"/></svg> Add Rule</button>
-        <button class="btn btn-danger" id="btnDelRules"><svg class="ic"><use href="#i-trash"/></svg> Delete Selected</button>
+        <button class="btn btn-outline" id="btnSyncGloss"><svg class="ic"><use href="#i-refresh"/></svg> <span data-i18n="syncJson">Sync from JSON</span></button>
+        <button class="btn btn-primary" id="btnAddRule" style="background:var(--green)"><svg class="ic"><use href="#i-plus"/></svg> <span data-i18n="addRule">Add Rule</span></button>
+        <button class="btn btn-danger" id="btnDelRules"><svg class="ic"><use href="#i-trash"/></svg> <span data-i18n="deleteSelected">Delete Selected</span></button>
       </div>
     </div>
     <p class="helper">Exact English → Arabic rules injected into every translation prompt and enforced through a regex post-processing pass.</p>
@@ -450,11 +462,11 @@ tr.asel{background:var(--sel)}
   <!-- ============ API KEYS ============ -->
   <section class="tab-page" id="page-api">
     <div class="page-head">
-      <div class="page-title"><svg class="ic ic-lg"><use href="#i-key"/></svg> API Providers</div>
+      <div class="page-title"><svg class="ic ic-lg"><use href="#i-key"/></svg> <span data-i18n="apiProviders">API Providers</span></div>
       <div class="head-actions">
-        <button class="btn btn-outline" id="btnReloadEnv"><svg class="ic"><use href="#i-rotate"/></svg> Reload from .env</button>
-        <button class="btn" id="btnAddProv" style="background:var(--green);color:#fff"><svg class="ic"><use href="#i-plus"/></svg> Add Provider</button>
-        <button class="btn btn-primary" id="btnSaveAll"><svg class="ic"><use href="#i-check"/></svg> Save All</button>
+        <button class="btn btn-outline" id="btnReloadEnv"><svg class="ic"><use href="#i-rotate"/></svg> <span data-i18n="reloadEnv">Reload from .env</span></button>
+        <button class="btn" id="btnAddProv" style="background:var(--green);color:#fff"><svg class="ic"><use href="#i-plus"/></svg> <span data-i18n="addProvider">Add Provider</span></button>
+        <button class="btn btn-primary" id="btnSaveAll"><svg class="ic"><use href="#i-check"/></svg> <span data-i18n="saveAll">Save All</span></button>
       </div>
     </div>
     <p class="helper">Provider credentials and models are stored in the project environment file. Secrets stay masked until explicitly revealed.</p>
@@ -467,7 +479,7 @@ tr.asel{background:var(--sel)}
 
   <!-- ============ ADD WEBSITE ============ -->
   <section class="tab-page" id="page-website">
-    <div class="page-title xl" style="margin-bottom:4px">Add A Website</div>
+    <div class="page-title xl" style="margin-bottom:4px"><span data-i18n="addWebsite">Add A Website</span></div>
     <p class="helper">Connect another novel website by choosing a suitable scraping method. Existing adapters remain unchanged; new adapters install into <span class="mono" style="font-size:11px">backend/adapters/custom</span>.</p>
     <div class="ws-grid">
       <div style="display:flex;flex-direction:column;gap:16px">
@@ -486,7 +498,7 @@ tr.asel{background:var(--sel)}
             <label class="flabel">Novel URL</label>
             <input class="input" id="wsUrl" style="width:100%" placeholder="https://example-novel-site.com/novel/…">
           </div>
-          <button class="btn btn-outline" id="btnCheckSite" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-search"/></svg> Check Adapter</button>
+          <button class="btn btn-outline" id="btnCheckSite" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-search"/></svg> <span data-i18n="checkAdapter">Check Adapter</span></button>
           <div>
             <label class="flabel">Source language</label>
             <select class="input" id="wsLang" style="width:100%">
@@ -494,19 +506,19 @@ tr.asel{background:var(--sel)}
               <option value="Arabic">Arabic (already translated)</option>
             </select>
           </div>
-          <button class="btn btn-bronze" id="btnGenAdapter" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-plug"/></svg> Generate Adapter Template</button>
+          <button class="btn btn-bronze" id="btnGenAdapter" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-plug"/></svg> <span data-i18n="generateAdapter">Generate Adapter Template</span></button>
           <div class="ws-result" id="wsResult"></div>
         </div>
       </div>
       <div class="card ws-panel">
         <h3><svg class="ic"><use href="#i-upload"/></svg> Install an adapter</h3>
-        <button class="btn btn-outline" id="btnUpload" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-upload"/></svg> Upload Adapter File (.py)</button>
+        <button class="btn btn-outline" id="btnUpload" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-upload"/></svg> <span data-i18n="uploadAdapter">Upload Adapter File (.py)</span></button>
         <input type="file" id="fileInput" accept=".py" hidden>
         <div class="gh-row">
           <input class="input" id="ghUrl" placeholder="https://raw.githubusercontent.com/…/adapter.py">
-          <button class="btn" id="btnGhImport" style="background:var(--green);color:#fff"><svg class="ic"><use href="#i-github"/></svg> Import</button>
+          <button class="btn" id="btnGhImport" style="background:var(--green);color:#fff"><svg class="ic"><use href="#i-github"/></svg> <span data-i18n="import">Import</span></button>
         </div>
-        <button class="btn btn-ghost" id="btnGhSearch" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-github"/></svg> Open GitHub adapter search</button>
+        <button class="btn btn-ghost" id="btnGhSearch" style="width:100%;justify-content:center"><svg class="ic"><use href="#i-github"/></svg> <span data-i18n="githubSearch">Open GitHub adapter search</span></button>
         <div class="ws-help" style="border-left-color:var(--bronze)">Imported adapters are copied to <b>backend/adapters/custom</b> and loaded for the current session. Built-in adapters are protected and can never be overwritten.</div>
       </div>
     </div>
@@ -531,6 +543,23 @@ tr.asel{background:var(--sel)}
       </div>
     </div>
   </section>
+
+  <!-- ============ HELP ============ -->
+  <section class="tab-page" id="page-help">
+    <div class="help-content">
+      <div class="page-head"><div class="page-title xl"><svg class="ic ic-lg"><use href="#i-info"/></svg> <span data-i18n="helpTitle">How NovelBridge works</span></div></div>
+      <p class="helper" data-i18n="helpIntro">A short guide to add a novel, configure translation, and export an EPUB.</p>
+      <div class="help-grid">
+        <article class="card help-step"><h3 data-i18n="helpStep1">1. Add a novel</h3><p data-i18n="helpText1">Open Library, click Add Novel, and paste a supported novel URL. Scrape Chapters loads the available chapter list.</p></article>
+        <article class="card help-step"><h3 data-i18n="helpStep2">2. Configure translation</h3><p data-i18n="helpText2">Open API Keys, edit a provider, paste your API key, choose a model, and click Save All. Use Auto or select a provider in the novel details.</p></article>
+        <article class="card help-step"><h3 data-i18n="helpStep3">3. Translate chapters</h3><p data-i18n="helpText3">Select chapters and start translation. Failed chapters can be retried after checking the provider key, quota, model, and internet connection.</p></article>
+        <article class="card help-step"><h3 data-i18n="helpStep4">4. Build your book</h3><p data-i18n="helpText4">When chapters are translated, click Build EPUB. The finished file is written to the output folder and can be opened in an ebook reader.</p></article>
+      </div>
+      <div class="card help-notes"><h3 data-i18n="helpProviderTitle">Provider example: Google Gemini</h3><p data-i18n="helpProviderText">In API Keys, choose Google Gemini and enter your key. Example model: gemini-3.5-flash-lite. Example Base URL: https://generativelanguage.googleapis.com. Keep the Base URL without a trailing /v1 unless your provider documentation specifically requires it.</p><div class="help-code"><div><b>GEMINI_API_KEY</b>=your-secret-key</div><div><b>GEMINI_MODEL</b>=gemini-3.5-flash-lite</div><div><b>GEMINI_BASE_URL</b>=https://generativelanguage.googleapis.com</div></div></div>
+      <div class="card help-notes"><h3 data-i18n="helpErrorsTitle">Common problems</h3><p data-i18n="helpErrors">No API key: configure one in API Keys. Rate limit: wait or switch provider. Unsupported URL: check Add Website. Missing chapters: retry failed chapters before building the EPUB.</p></div>
+      <p class="helper" data-i18n="helpDocs">For the full bilingual guide, open docs/USER_GUIDE.md in the project folder.</p>
+    </div>
+  </section>
 </main>
 
 <footer class="statusbar">
@@ -552,7 +581,7 @@ const now=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'
 
 /* ================= data ================= */
 const COVERS={quill:'https://image.qwenlm.ai/public_source/419a6057-894e-4cb9-983a-adeb02cb7267/15843a2e5-203a-4944-acd4-6bdaea3fcb31.png'};
-const state={selectedId:null,checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],adpSel:null,glossSel:new Set()};
+const state={selectedId:null,checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],adpSel:null,glossSel:new Set(),language:localStorage.getItem('novelbridge-language')||'en'};
 const current=()=>state.novels.find(n=>n.id===state.selectedId)||null;
 function avatarLetter(title){return Array.from(String(title||'?').trim())[0]?.toUpperCase()||'?'}
 function coverMarkup(title,url,cls){
@@ -571,6 +600,24 @@ function toast(msg,type='ok'){
  $('#toasts').appendChild(t);
  setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),260)},3600);
 }
+
+/* ================= language ================= */
+const UI_TEXT={
+ en:{darkMode:'Dark mode',lightMode:'Light mode',startServer:'Start API Server',schedule:'Schedule Translations',addNovel:'Add Novel',library:'Library',glossary:'Glossary',apiKeys:'API Keys',addWebsite:'Add Website',adapters:'Adapters',help:'Help',delete:'Delete',refresh:'Refresh',translationGlossary:'Translation Glossary',syncJson:'Sync from JSON',addRule:'Add Rule',deleteSelected:'Delete Selected',apiProviders:'API Providers',reloadEnv:'Reload from .env',addProvider:'Add Provider',saveAll:'Save All',checkAdapter:'Check Adapter',generateAdapter:'Generate Adapter Template',uploadAdapter:'Upload Adapter File (.py)',import:'Import',githubSearch:'Open GitHub adapter search',provider:'Provider',model:'Model',requestGap:'Request gap',apiKeysAction:'API Keys',scrapeChapters:'Scrape Chapters',translateAll:'Translate All',translateSelected:'Translate Selected',deleteTranslation:'Delete Translation',buildEpub:'Build EPUB',deleteNovel:'Delete Novel',helpTitle:'How NovelBridge works',helpIntro:'A short guide to add a novel, configure translation, and export an EPUB.',helpStep1:'1. Add a novel',helpText1:'Open Library, click Add Novel, and paste a supported novel URL. Scrape Chapters loads the available chapter list.',helpStep2:'2. Configure translation',helpText2:'Open API Keys, edit a provider, paste your API key, choose a model, and click Save All. Use Auto or select a provider in the novel details.',helpStep3:'3. Translate chapters',helpText3:'Select chapters and start translation. Failed chapters can be retried after checking the provider key, quota, model, and internet connection.',helpStep4:'4. Build your book',helpText4:'When chapters are translated, click Build EPUB. The finished file is written to the output folder and can be opened in an ebook reader.',helpProviderTitle:'Provider example: Google Gemini',helpProviderText:'In API Keys, choose Google Gemini and enter your key. Example model: gemini-3.5-flash-lite. Google Gemini uses the official SDK endpoint https://generativelanguage.googleapis.com internally, so do not add GEMINI_BASE_URL in .env. A configurable Base URL is only used by OpenAI-compatible providers such as TokenRouter or OrcaRouter.',helpErrorsTitle:'Common problems',helpErrors:'No API key: configure one in API Keys. Rate limit: wait or switch provider. Unsupported URL: check Add Website. Missing chapters: retry failed chapters before building the EPUB.',helpDocs:'For the full bilingual guide, open docs/USER_GUIDE.md in the project folder.'},
+ ar:{darkMode:'الوضع الداكن',lightMode:'الوضع الفاتح',startServer:'تشغيل خادم API',schedule:'جدولة الترجمات',addNovel:'إضافة رواية',library:'المكتبة',glossary:'المصطلحات',apiKeys:'مفاتيح API',addWebsite:'إضافة موقع',adapters:'الموصلات',help:'المساعدة',delete:'حذف',refresh:'تحديث',translationGlossary:'قاموس الترجمة',syncJson:'مزامنة من JSON',addRule:'إضافة قاعدة',deleteSelected:'حذف المحدد',apiProviders:'مزودو API',reloadEnv:'إعادة التحميل من .env',addProvider:'إضافة مزود',saveAll:'حفظ الكل',checkAdapter:'فحص الموصل',generateAdapter:'إنشاء قالب موصل',uploadAdapter:'رفع ملف موصل (.py)',import:'استيراد',githubSearch:'فتح بحث الموصلات في GitHub',provider:'المزود',model:'النموذج',requestGap:'الفاصل بين الطلبات',apiKeysAction:'مفاتيح API',scrapeChapters:'جلب الفصول',translateAll:'ترجمة الكل',translateSelected:'ترجمة المحدد',deleteTranslation:'حذف الترجمة',buildEpub:'إنشاء EPUB',deleteNovel:'حذف الرواية',helpTitle:'كيف يعمل NovelBridge',helpIntro:'دليل مختصر لإضافة رواية وإعداد الترجمة وإنشاء ملف EPUB.',helpStep1:'1. إضافة رواية',helpText1:'افتح المكتبة واضغط إضافة رواية، ثم الصق رابطاً مدعوماً. يقوم جلب الفصول بتحميل قائمة الفصول المتاحة.',helpStep2:'2. إعداد الترجمة',helpText2:'افتح مفاتيح API، وعدّل مزوداً، والصق مفتاحك، واختر نموذجاً، ثم اضغط حفظ الكل. يمكنك اختيار تلقائي أو مزود محدد من تفاصيل الرواية.',helpStep3:'3. ترجمة الفصول',helpText3:'اختر الفصول وابدأ الترجمة. يمكن إعادة محاولة الفصول الفاشلة بعد فحص المفتاح والحصة والنموذج واتصال الإنترنت.',helpStep4:'4. إنشاء الكتاب',helpText4:'بعد ترجمة الفصول اضغط إنشاء EPUB. يحفظ الملف النهائي داخل مجلد output ويمكن فتحه في قارئ الكتب.',helpProviderTitle:'مثال على مزود الترجمة: Google Gemini',helpProviderText:'من تبويب مفاتيح API اختر Google Gemini وأدخل مفتاحك. مثال اسم النموذج: gemini-3.5-flash-lite. يستخدم Google Gemini عنوان الخدمة الرسمي https://generativelanguage.googleapis.com داخلياً، لذلك لا تضف GEMINI_BASE_URL إلى ملف .env. يمكن تخصيص Base URL فقط للمزودين المتوافقين مع OpenAI مثل TokenRouter وOrcaRouter.',helpErrorsTitle:'المشكلات الشائعة',helpErrors:'لا يوجد مفتاح API: أضف مفتاحاً من مفاتيح API. تجاوز الحصة: انتظر أو بدّل المزود. رابط غير مدعوم: افحص إضافة موقع. فصول ناقصة: أعد محاولة الفصول الفاشلة قبل إنشاء EPUB.',helpDocs:'للدليل الكامل باللغتين، افتح docs/USER_GUIDE.md داخل مجلد المشروع.'}
+};
+function applyLanguage(language){
+ state.language=language==='ar'?'ar':'en';
+ localStorage.setItem('novelbridge-language',state.language);
+ document.documentElement.lang=state.language;
+ document.body.classList.toggle('rtl',state.language==='ar');
+ $('#languageSelect').value=state.language;
+ const text=UI_TEXT[state.language];
+ $$('[data-i18n]').forEach(el=>{if(text[el.dataset.i18n])el.textContent=text[el.dataset.i18n]});
+ if(typeof renderDetail==='function'&&current())renderDetail();
+}
+function t(key){return (UI_TEXT[state.language]&&UI_TEXT[state.language][key])||key}
+$('#languageSelect').onchange=e=>applyLanguage(e.target.value);
 
 /* ================= modal ================= */
 function openModal(html,wide=false){
@@ -718,10 +765,10 @@ function renderDetail(){
    </table></div>
  </div>
  <div class="prov-card">
-   <div class="pfield"><label>${ic('cpu')} Provider</label><select class="input" id="provSel">${state.providers.map(p=>`<option value="${esc(p.name)}" ${p.name===(nv.provider||'Gemini')?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
-   <div class="pfield grow"><label>${ic('tag')} Model</label><input class="input" id="modelInp" list="modelList" style="width:100%"><datalist id="modelList"></datalist></div>
-   <div class="gap-box"><label>Request gap</label><div class="gap-in"><input type="number" id="gapInp" min="0" step="0.5" value="2"><span>s</span></div><small>between requests</small></div>
-   <button class="btn btn-outline" data-act="apikeys">${ic('key')} API Keys</button>
+  <div class="pfield"><label>${ic('cpu')} ${t('provider')}</label><select class="input" id="provSel">${state.providers.map(p=>`<option value="${esc(p.name)}" ${p.name===(nv.provider||'Gemini')?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+  <div class="pfield grow"><label>${ic('tag')} ${t('model')}</label><input class="input" id="modelInp" list="modelList" style="width:100%"><datalist id="modelList"></datalist></div>
+  <div class="gap-box"><label>${t('requestGap')}</label><div class="gap-in"><input type="number" id="gapInp" min="0" step="0.5" value="2"><span>s</span></div><small>between requests</small></div>
+  <button class="btn btn-outline" data-act="apikeys">${ic('key')} ${t('apiKeysAction')}</button>
  </div>
  <div class="job-card" id="jobCard" hidden>
    <div class="job-top"><div class="job-bar"><div id="jobFill"></div></div><span id="jobPct">0%</span></div>
@@ -729,12 +776,12 @@ function renderDetail(){
    <div class="job-btns"><button class="btn btn-outline btn-sm" id="btnPause">${ic('pause')} Pause</button><button class="btn btn-danger btn-sm" id="btnCancel">${ic('x')} Cancel</button></div>
  </div>
  <div class="action-row">
-   <button class="btn btn-outline" id="btnScrape">${ic('download')} Scrape Chapters</button>
-   <button class="btn btn-primary" id="btnTransAll">${ic('language')} Translate All</button>
-   <button class="btn btn-outline" id="btnTransSel">${ic('check')} Translate Selected</button>
-   <button class="btn btn-danger" id="btnDelTrans">${ic('trash')} Delete Translation</button>
-   <button class="btn btn-bronze" id="btnEpub">${ic('epub')} Build EPUB</button>
-   <button class="btn btn-danger" id="btnDelNovel">${ic('trash')} Delete Novel</button>
+  <button class="btn btn-outline" id="btnScrape">${ic('download')} ${t('scrapeChapters')}</button>
+  <button class="btn btn-primary" id="btnTransAll">${ic('language')} ${t('translateAll')}</button>
+  <button class="btn btn-outline" id="btnTransSel">${ic('check')} ${t('translateSelected')}</button>
+  <button class="btn btn-danger" id="btnDelTrans">${ic('trash')} ${t('deleteTranslation')}</button>
+  <button class="btn btn-bronze" id="btnEpub">${ic('epub')} ${t('buildEpub')}</button>
+  <button class="btn btn-danger" id="btnDelNovel">${ic('trash')} ${t('deleteNovel')}</button>
  </div>`;
  syncModels();renderChapters();refreshControls();
 }
@@ -1156,13 +1203,15 @@ function applyTheme(dark){
  document.body.classList.toggle('dark',dark);
  const button=$('#btnTheme');
  if(button){
-  button.innerHTML=dark?`${ic('sun')} Light mode`:`${ic('moon')} Dark mode`;
+  const label=state.language==='ar'?(dark?'الوضع الفاتح':'الوضع الداكن'):(dark?'Light mode':'Dark mode');
+  button.innerHTML=dark?`${ic('sun')} <span data-i18n="lightMode">${label}</span>`:`${ic('moon')} <span data-i18n="darkMode">${label}</span>`;
   button.title=dark?'Switch to light mode':'Switch to dark mode';
  }
  localStorage.setItem('novelbridge-theme',dark?'dark':'light');
 }
 $('#btnTheme').onclick=()=>applyTheme(!document.body.classList.contains('dark'));
 applyTheme(localStorage.getItem('novelbridge-theme')==='dark');
+applyLanguage(state.language);
 
 /* ================= init ================= */
 renderSidebar();renderDetail();renderGlossary();renderProviders();renderAdapters();
@@ -1279,23 +1328,60 @@ setStatus('Ready - Add a novel URL to get started.');
         const selected = state.providers.find(p => p.name === card?.dataset.p);
         if (!selected) return;
         const action = button.dataset.pact;
-        if (action === 'editkey' || action === 'rotate') {
-          bridge.edit_provider_key(selected.prefix);
+        if (action === 'editkey') {
+          promptModal('Change API Key — ' + selected.name, 'API key', selected.key, function (value) {
+            bridge.save_provider_key(selected.prefix, value, function (saved) {
+              if (!saved) return toast('Unable to save the API key.', 'err');
+              refresh();
+              toast('API key updated for ' + selected.name + '.');
+            });
+          }, true);
+        } else if (action === 'rotate') {
+          promptModal('Rotate API Key — ' + selected.name, 'New API key', '', function (value) {
+            bridge.save_provider_key(selected.prefix, value, function (saved) {
+              if (!saved) return toast('Unable to save the API key.', 'err');
+              refresh();
+              toast('API key rotated for ' + selected.name + '.');
+            });
+          }, true);
         } else if (action === 'addmodel') {
-          const value = prompt('Model name');
-          if (value) {
+          promptModal('Add Model — ' + selected.name, 'Model name', '', function (value) {
             selected.models.push(value.trim());
             bridge.save_provider(selected.prefix, selected.base, JSON.stringify(selected.models));
-          }
+          });
         } else if (action === 'delmodel') {
           const row = button.closest('.model-row');
           if (row) {
             selected.models = selected.models.filter(m => m !== row.dataset.m);
             bridge.save_provider(selected.prefix, selected.base, JSON.stringify(selected.models));
           }
+        } else if (action === 'editmodel') {
+          const row = button.closest('.model-row');
+          if (row) {
+            promptModal('Edit Model — ' + selected.name, 'Model name', row.dataset.m, function (value) {
+              const index = selected.models.indexOf(row.dataset.m);
+              if (index > -1) selected.models[index] = value.trim();
+              bridge.save_provider(selected.prefix, selected.base, JSON.stringify(selected.models));
+            });
+          }
+        } else if (action === 'test' || action === 'testmodel') {
+          const row = button.closest('.model-row');
+          const modelName = row?.dataset.m || selected.models[0] || '';
+          button.disabled = true;
+          button.innerHTML = `${ic('refresh','ic-sm spin')} Testing...`;
+          bridge.test_provider(selected.prefix, modelName, function (raw) {
+            button.disabled = false;
+            button.innerHTML = action === 'test'
+              ? `${ic('play','ic-sm')} Test Provider`
+              : `${ic('play','ic-sm')}`;
+            const result = JSON.parse(raw);
+            if (result.ok) toast(`${selected.name} responded successfully using ${result.model}.`, 'info');
+            else infoBox('Provider test failed', result.error || 'The provider did not return a valid response.', 'alert', 'red');
+          });
         } else if (action === 'edit') {
-          const value = prompt('Base URL', selected.base);
-          if (value) bridge.save_provider(selected.prefix, value, JSON.stringify(selected.models));
+          promptModal('Edit Provider — ' + selected.name, 'Base URL', selected.base, function (value) {
+            bridge.save_provider(selected.prefix, value, JSON.stringify(selected.models));
+          });
         }
       });
       cleanProviders.addEventListener('change', function (event) {

@@ -1,117 +1,159 @@
-# Novel Bridge AR User Guide
+# Novel Bridge AR User Guide / دليل استخدام Novel Bridge AR
 
-Novel Bridge AR downloads chapters from supported web novel sources, translates them with a configured language model, and creates an EPUB file for offline reading.
+This guide is bilingual. The English instructions come first, followed by the Arabic instructions.
 
-## Before You Start
+## English
 
-- Install Python 3.11 or newer.
-- Make sure you have permission to access and translate the novels you use.
-- Create an API key for at least one supported translation provider.
-- Keep API keys private. Do not commit your `.env` file or share screenshots containing keys.
+Novel Bridge AR downloads chapters from supported novel websites, translates them with an AI provider, and creates an EPUB book for offline reading.
 
-If you downloaded a Windows installer from a release that includes Playwright, you do not need to install Python, the packages in `requirements.txt`, or Chromium separately. The installer is built with PyInstaller and includes the application runtime and browser. Older installers may not include Chromium; update to the latest release if a browser-based site adapter reports a missing browser.
+### 1. Install and start
 
-## Installation
+**Windows installer:** Run `NovelBridgeAR_Setup.exe`, then open NovelBridge AR from the Start Menu. The installer normally includes Python and the browser runtime, but an internet connection and a translation API key are still required.
 
-### Windows Installer
-
-Run the `NovelBridgeAR_Setup.exe` file and launch NovelBridge AR from the Start Menu or desktop shortcut. You still need an internet connection and an API key for translation providers.
-
-### Run from Source
-
-Open PowerShell in the project folder and run:
+**Run from source:** Install Python 3.11 or newer. In PowerShell, from the project folder, run:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python -m playwright install
-```
-
-If PowerShell blocks activation, run the application with the Python executable inside `.venv` directly or adjust your local execution-policy settings.
-
-## Start the Application
-
-Run:
-
-```powershell
 python run_gui.py
 ```
 
-The application opens as a desktop window. The first run creates the local database and uses the project folders for configuration and generated files.
+If activation is blocked, run `.venv\Scripts\python.exe run_gui.py` using the Python executable inside the environment. The first run creates the local database.
 
-## Configure Translation
+### 2. Add an API key
 
-1. Open the **API Keys** tab.
-2. Enter an API key for one or more providers.
-3. Set the matching model name when a provider requires one.
-4. Click **Save**.
+You need at least one provider. API keys are created on the provider's website, not inside Novel Bridge AR:
 
-Supported provider settings include:
+| Provider | Create a key | Main settings |
+| --- | --- | --- |
+| Google Gemini | https://aistudio.google.com/app/apikey | `GEMINI_API_KEY`, `GEMINI_MODEL` |
+| Groq | https://console.groq.com | `GROQ_API_KEY`, `GROQ_MODEL` |
+| TokenRouter | https://tokenrouter.com | `TOKENROUTER_API_KEY`, `TOKENROUTER_MODEL`, `TOKENROUTER_BASE_URL` |
+| OrcaRouter | https://orcarouter.ai | `ORCAROUTER_API_KEY`, `ORCAROUTER_MODEL`, `ORCAROUTER_BASE_URL` |
 
-- Gemini: `GEMINI_API_KEY`, `GEMINI_MODEL`
-- Groq: `GROQ_API_KEY`, `GROQ_MODEL`
-- TokenRouter: `TOKENROUTER_API_KEY`, `TOKENROUTER_MODEL`, `TOKENROUTER_BASE_URL`
-- OrcaRouter: `ORCAROUTER_API_KEY`, `ORCAROUTER_MODEL`, `ORCAROUTER_BASE_URL`
+In the application:
 
-The settings are stored in `.env` in the project root. The application masks secret values in the interface, but the file itself is not encrypted.
+1. Open **API Keys**.
+2. Find a provider and click **Edit**.
+3. Paste the key into the API Key field. Never paste a key into a novel, glossary, or chat message.
+4. Confirm the model name and Base URL. For Gemini, use model `gemini-3.5-flash-lite`; the official SDK uses `https://generativelanguage.googleapis.com` internally, so do not add `GEMINI_BASE_URL` to `.env`. Base URL is configurable for OpenAI-compatible providers such as TokenRouter and OrcaRouter.
+5. Click **Save All**. The provider should show **Connected**.
+6. Click **Test Provider** to confirm that a key is present. This checks configuration; a real translation also depends on quota, model availability, and the network.
 
-## Translate a Novel
+The values are saved in `.env` in the project root. The interface masks secrets, but `.env` is not encrypted. Do not commit it or share it. To configure the file manually, copy `.env.example` to `.env` and replace the placeholder values.
 
-1. Paste a supported novel URL into the novel input field.
-2. Start the scrape/import operation and wait for the novel and chapter list to load.
-3. Review the chapter list and select the chapters to process.
-4. Choose the translation provider and start translation.
-5. Monitor chapter status and review any errors shown by the application.
+Gemini example:
 
-Supported site configuration is stored in `config/sites.json`. Sites can change their layouts or access rules, so scraping may stop working until an adapter or selector is updated.
+```env
+GEMINI_API_KEY=your-secret-key
+GEMINI_MODEL=gemini-3.5-flash-lite
+# No GEMINI_BASE_URL is needed; the Google SDK uses its official endpoint.
+```
 
-## Use the Glossary
+**Auto provider:** If you choose **Auto**, the application tries TokenRouter, OrcaRouter, Gemini, then Groq. Configure the provider you want to use first, or select a provider explicitly for predictable results.
 
-The glossary keeps names, terms, and phrases consistent during translation.
+### 3. Translate a novel
 
-1. Open the **Glossary** tab.
-2. Add a source term and its preferred Arabic translation.
-3. Save the rule.
-4. Sync from `config/glossary.json` when you want to load the shared project glossary.
+1. In **Library**, paste a supported novel URL.
+2. Start the import/scrape operation and wait for the chapters to appear.
+3. Select the chapters to translate.
+4. Choose a provider and model, then start translation.
+5. Watch each chapter's status. Retry failed chapters before building the book.
 
-Use exact, clear rules for names and recurring terminology. Test important terms in a short chapter before processing a large novel.
+### 4. Keep names consistent
 
-## Build and Find the EPUB
+Open **Glossary**, add the source term and its preferred Arabic translation, then save it. Use **Sync from JSON** to load shared rules from `config/glossary.json`. Test important terms on a short chapter first.
 
-After the required chapters have been translated, choose **Build EPUB**. Generated books are written to the `output/` folder using the novel title as the filename. The EPUB is intended for use with an external ebook reader.
+### 5. Build the EPUB
 
-## Troubleshooting
+When the required chapters are translated, click **Build EPUB**. Books are saved in `output/` with the novel title as the filename. Only successfully translated chapters are included.
 
-### The application does not start
+### Troubleshooting
 
-Confirm that the virtual environment is active and dependencies are installed:
+| Error or symptom | What to do |
+| --- | --- |
+| `No translation API key configured` | Open **API Keys**, add at least one key, click **Save All**, and restart the translation. |
+| `... API key not configured` | Configure the named provider, or select a provider for which you already have a key. Check spelling in `.env`. |
+| Invalid key, unauthorized, or 401/403 | Create a new key on the provider website, check that it is active and has permission, replace it with **Edit**, then **Save All**. |
+| Rate limit, quota, or 429 | Wait, reduce the number of jobs, check provider billing/quota, or use another configured provider. |
+| Model not found or bad request | Check the exact model name and Base URL. Remove old model entries and add the current provider model. |
+| Scrape/import fails | Confirm the URL is supported and opens in a browser. Retry later if the site is unavailable. Site selectors are in `config/sites.json`; do not bypass access controls. |
+| Application does not start | Activate `.venv`, reinstall with `python -m pip install -r requirements.txt`, install the browser with `python -m playwright install`, then run `python run_gui.py`. |
+| EPUB is missing chapters | Check chapter statuses, retry failed chapters, and build the EPUB again. |
+
+For development checks, run `pytest` from the project root. Use the tool only for novels and websites you are authorized to access and translate. Provider, website, and third-party content terms still apply; the MIT license covers this project's source code only.
+
+## العربية
+
+يقوم Novel Bridge AR بتنزيل فصول الروايات من المواقع المدعومة، وترجمتها باستخدام مزود ذكاء اصطناعي، ثم إنشاء كتاب EPUB للقراءة دون اتصال.
+
+### 1. التثبيت والتشغيل
+
+**مثبت Windows:** شغّل الملف `NovelBridgeAR_Setup.exe`، ثم افتح Novel Bridge AR من قائمة Start. يحتوي المثبت عادةً على Python وبيئة المتصفح، لكن يلزم اتصال بالإنترنت ومفتاح API للترجمة.
+
+**التشغيل من المصدر:** ثبّت Python 3.11 أو أحدث. افتح PowerShell داخل مجلد المشروع وشغّل:
 
 ```powershell
-python -m pip install -r requirements.txt
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m playwright install
 python run_gui.py
 ```
 
-### Translation fails
+إذا منع PowerShell تفعيل البيئة، شغّل `.venv\Scripts\python.exe run_gui.py` باستخدام Python الموجود داخل البيئة. ينشئ التشغيل الأول قاعدة البيانات المحلية.
 
-Check the API key, model name, provider quota, internet connection, and the error shown in the application. Try another configured provider if the current provider is unavailable or rate-limited.
+### 2. إضافة مفتاح API
 
-### Scraping fails
+تحتاج إلى مزود واحد على الأقل. يتم إنشاء مفاتيح API من موقع المزود، وليس من داخل التطبيق. الروابط وأسماء الإعدادات موجودة في جدول قسم English أعلاه.
 
-Verify that the URL belongs to a configured site and that the source is reachable in a browser. Do not bypass access controls or violate a website's terms. Site adapters and selectors are maintained in `backend/adapters/` and `config/sites.json`.
+داخل التطبيق:
 
-### The EPUB is missing chapters
+1. افتح تبويب **API Keys**.
+2. اختر مزوداً واضغط **Edit**.
+3. الصق المفتاح في حقل API Key. لا تضع المفتاح داخل اسم رواية أو المصطلحات أو رسائل المحادثة.
+4. تأكد من اسم النموذج وBase URL. بالنسبة إلى Gemini استخدم النموذج `gemini-3.5-flash-lite`؛ تستخدم المكتبة الرسمية العنوان `https://generativelanguage.googleapis.com` داخلياً، لذلك لا تضف `GEMINI_BASE_URL` إلى ملف `.env`. يمكن تخصيص Base URL للمزودين المتوافقين مع OpenAI مثل TokenRouter وOrcaRouter.
+5. اضغط **Save All**. يجب أن تظهر حالة المزود **Connected**.
+6. اضغط **Test Provider** للتأكد من وجود المفتاح. هذا الاختبار يتحقق من الإعداد فقط، أما الترجمة الفعلية فتتأثر بالحصة والنموذج والإنترنت.
 
-Only successfully translated chapters can be included. Check chapter statuses, retry failed chapters, and build the EPUB again.
+تُحفظ الإعدادات في ملف `.env` داخل مجلد المشروع. يخفي التطبيق المفاتيح، لكن الملف غير مشفر. لا ترفعه إلى GitHub ولا تشاركه. للإعداد اليدوي، انسخ `.env.example` إلى `.env` واستبدل القيم التجريبية بقيمك.
 
-## Development Checks
+مثال إعداد Gemini:
 
-Run the smoke tests from the project root:
-
-```powershell
-pytest
+```env
+GEMINI_API_KEY=your-secret-key
+GEMINI_MODEL=gemini-3.5-flash-lite
+# لا تحتاج إلى GEMINI_BASE_URL؛ تستخدم مكتبة Google العنوان الرسمي داخلياً.
 ```
 
-## Legal and Responsible Use
+عند اختيار **Auto** يجرب التطبيق المزودين بالترتيب: TokenRouter ثم OrcaRouter ثم Gemini ثم Groq. للحصول على نتيجة متوقعة، اختر المزود يدوياً أو اضبط المزود المطلوب أولاً.
 
-The MIT license applies to this project's source code only. It does not grant rights to third-party novels, websites, translations, fonts, models, or API services. Follow copyright law, provider terms, website terms, and applicable rate limits. Use the tool for content you are authorized to access and translate.
+### 3. ترجمة رواية
+
+1. من تبويب **Library** الصق رابط رواية مدعوم.
+2. شغّل الاستيراد/الجلب وانتظر ظهور الفصول.
+3. اختر الفصول التي تريد ترجمتها.
+4. اختر المزود والنموذج ثم ابدأ الترجمة.
+5. راقب حالة كل فصل، وأعد محاولة الفصول الفاشلة قبل إنشاء الكتاب.
+
+### 4. تثبيت ترجمة الأسماء والمصطلحات
+
+افتح **Glossary**، وأضف المصطلح الأصلي وترجمته العربية المفضلة، ثم احفظ القاعدة. استخدم **Sync from JSON** لتحميل القواعد المشتركة من `config/glossary.json`. اختبر المصطلحات المهمة على فصل قصير أولاً.
+
+### 5. إنشاء ملف EPUB
+
+بعد ترجمة الفصول المطلوبة اضغط **Build EPUB**. تُحفظ الكتب داخل `output/` باسم الرواية. لا يتم تضمين الفصول التي فشلت ترجمتها.
+
+### حل الأخطاء
+
+- **لا يوجد مفتاح ترجمة:** افتح **API Keys**، أضف مفتاحاً واحداً على الأقل، اضغط **Save All**، ثم أعد الترجمة.
+- **مفتاح غير صالح أو 401/403:** أنشئ مفتاحاً جديداً، تأكد من تفعيله وصلاحياته، ثم استبدله من **Edit** واضغط **Save All**.
+- **تجاوز الحصة أو 429:** انتظر، خفّض عدد المهام المتزامنة، تحقق من حصة المزود، أو استخدم مزوداً آخر.
+- **النموذج غير موجود:** راجع اسم النموذج وBase URL حرفياً، واحذف النماذج القديمة وأضف الاسم الحالي.
+- **فشل جلب الموقع:** تأكد أن الرابط مدعوم ويفتح في المتصفح، ثم أعد المحاولة لاحقاً. لا تتجاوز أنظمة الحماية أو شروط الموقع.
+- **التطبيق لا يفتح:** فعّل `.venv`، وثبّت المتطلبات، وثبّت Playwright، ثم شغّل `python run_gui.py` كما في قسم التثبيت.
+- **فصول ناقصة في EPUB:** راجع حالات الفصول، أعد ترجمة الفاشل، ثم أنشئ EPUB مرة أخرى.
+
+للتأكد من صحة المشروع شغّل `pytest` من مجلد المشروع. استخدم الأداة فقط للمحتوى والمواقع التي تملك حق الوصول إليها وترجمتها. يغطي ترخيص MIT كود المشروع فقط، بينما تخضع الخدمات والمواقع والمحتوى الخارجي لشروطها الخاصة.
