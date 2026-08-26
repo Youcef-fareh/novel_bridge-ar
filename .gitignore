@@ -47,6 +47,8 @@ Thumbs.db
 *.log
 .env
 .env.local
+config/google_client_secret.json
+config/google_drive_token.json
 novel-translator-mvp-spec.md
 
 # Generated outputs

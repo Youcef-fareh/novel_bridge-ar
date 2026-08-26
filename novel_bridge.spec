@@ -22,8 +22,9 @@ datas += [(".env.example", ".")]
 # App icon — bundled so the frozen exe can load it at runtime
 datas += [("icon.ico", ".")]
 
-# Site / glossary config files — needed at runtime
-datas += [("config", "config")]
+# Public site / glossary config files — OAuth client secrets stay external.
+datas += [("config/sites.json", "config")]
+datas += [("config/glossary.json", "config")]
 
 # Collect all data files from known heavy packages
 for pkg in ("PyQt6", "sqlmodel", "uvicorn", "fastapi", "selectolax", "playwright"):
