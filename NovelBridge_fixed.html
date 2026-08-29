@@ -766,7 +766,7 @@ function renderDetail(){
  </div>
  <div class="prov-card">
   <div class="pfield"><label>${ic('cpu')} ${t('provider')}</label><select class="input" id="provSel">${state.providers.map(p=>`<option value="${esc(p.name)}" ${p.name===(nv.provider||'Gemini')?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
-  <div class="pfield grow"><label>${ic('tag')} ${t('model')}</label><input class="input" id="modelInp" list="modelList" style="width:100%"><datalist id="modelList"></datalist></div>
+  <div class="pfield grow"><label>${ic('tag')} ${t('model')}</label><select class="input" id="modelInp" style="width:100%"></select></div>
   <div class="gap-box"><label>${t('requestGap')}</label><div class="gap-in"><input type="number" id="gapInp" min="0" step="0.5" value="2"><span>s</span></div><small>between requests</small></div>
   <button class="btn btn-outline" data-act="apikeys">${ic('key')} ${t('apiKeysAction')}</button>
  </div>
@@ -789,8 +789,10 @@ function renderDetail(){
 function syncModels(){
  const p=state.providers.find(x=>x.name===$('#provSel')?.value)||state.providers[0];
  if(!p)return;
- $('#modelList').innerHTML=p.models.map(m=>`<option value="${m}">`).join('');
- if(!p.models.includes($('#modelInp').value))$('#modelInp').value=p.models[0]||'';
+ const modelInput=$('#modelInp');
+ const currentModel=modelInput.value;
+ modelInput.innerHTML=p.models.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
+ modelInput.value=p.models.includes(currentModel)?currentModel:(p.models[0]||'');
 }
 function renderChapters(){
  const nv=current();if(!nv)return;
@@ -805,14 +807,14 @@ function renderChapters(){
 function refreshControls(){
  const nv=current();if(!nv)return;
  const c=counts(nv),job=!!state.job;
- const chkScraped=nv.chapters.some(x=>state.checked.has(x.num)&&x.status==='scraped');
+ const chkTranslatable=nv.chapters.some(x=>state.checked.has(x.num)&&['scraped','failed'].includes(x.status));
  const chkTrans=nv.chapters.some(x=>state.checked.has(x.num)&&x.status==='translated');
  const pend=nv.chapters.filter(x=>x.status==='pending').length;
  const el=id=>$('#'+id);
  if(el('selCount'))el('selCount').textContent=`${state.checked.size} selected`;
  el('btnScrape').disabled=job||(nv.chapters.length>0&&pend===0);
  el('btnTransAll').disabled=job||c.scraped===0;
- el('btnTransSel').disabled=job||!chkScraped;
+ el('btnTransSel').disabled=job||!chkTranslatable;
  el('btnDelTrans').disabled=job||!chkTrans;
  el('btnEpub').disabled=job||c.translated===0;
  el('btnDrive').disabled=job;
@@ -1241,7 +1243,7 @@ setStatus('Ready - Add a novel URL to get started.');
       id: r.id, en: r.source_term, ar: r.target_term, notes: r.notes || ''
     }));
     state.providers = (snapshot.providers || []).map(p => ({
-      name: p.name, prefix: p.prefix, key: '', base: p.base_url || '',
+      name: p.name, prefix: p.prefix, key: p.key || '', base: p.base_url || '',
       models: p.models || [], enabled: p.configured
     }));
     state.adapters = (snapshot.adapters || []).map(a => ({

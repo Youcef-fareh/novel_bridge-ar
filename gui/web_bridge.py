@@ -121,6 +121,7 @@ class NovelBridgeWebChannel(QObject):
             providers.append({
                 "name": name,
                 "prefix": prefix,
+                "key": env.get(key_var, ""),
                 "configured": bool(env.get(key_var, "").strip()),
                 "base_url": env.get(base_var, default_base),
                 "models": model_values,
@@ -182,11 +183,11 @@ class NovelBridgeWebChannel(QObject):
     def start_scrape(self, novel_id: int) -> bool:
         return self._start_job("scrape", novel_id)
 
-    @pyqtSlot(int, str, str, str, result=bool)
+    @pyqtSlot(int, str, str, result=bool)
     def start_translation(self, novel_id: int, provider: str, model: str) -> bool:
         return self._start_job("translate", novel_id, provider, model)
 
-    @pyqtSlot(int, str, str, result=bool)
+    @pyqtSlot(int, str, str, str, result=bool)
     def start_selected_translation(self, novel_id: int, chapter_ids_json: str, provider: str, model: str) -> bool:
         if self._job_control is not None or not get_novel(novel_id):
             return False
