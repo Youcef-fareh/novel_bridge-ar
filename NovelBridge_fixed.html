@@ -162,11 +162,19 @@ main{flex:1;min-height:0;position:relative}
 .stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sc,var(--ink))}
 .stat-n{font:600 24px/1 var(--font-d);color:var(--sc,var(--ink))}
 .stat-l{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px}
-.table-card{display:flex;flex-direction:column;min-height:180px;flex:1}
-.table-tools{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line)}
+.table-card{display:flex;flex-direction:column;min-height:280px;flex:1}
+.table-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .table-tools .tt-l{font:600 13px var(--font-d);display:flex;gap:8px;align-items:center}
 .table-tools .tt-l .ic{color:var(--teal)}
 #selCount{font-size:11.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);padding:3px 10px;border-radius:999px}
+.chapter-range{display:flex;align-items:center;gap:6px;flex:1;justify-content:flex-end;min-width:420px}
+.chapter-range label{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.chapter-range input{height:30px;border:1px solid var(--line2);border-radius:7px;background:var(--surface);padding:0 7px;font:12px var(--font-m);color:var(--ink);outline:none}
+.chapter-range input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(14,107,91,.1)}
+.chapter-range .range-num{width:58px;text-align:center}
+.chapter-range .exclude-input{width:min(230px,25vw);font-family:var(--font-u)}
+.chapter-range .range-dash{color:var(--muted)}
+.chapter-range .btn{height:30px;padding:0 10px;font-size:11.5px}
 .table-wrap{flex:1;overflow:auto;min-height:0}
 table{width:100%;border-collapse:collapse;font-size:13px}
 thead th{position:sticky;top:0;z-index:2;background:var(--surface);text-align:left;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 12px;border-bottom:2px solid var(--teal)}
@@ -188,20 +196,23 @@ input[type=checkbox]{width:15px;height:15px;accent-color:var(--teal);cursor:poin
 .tr-ar{font-family:var(--font-a);font-size:14px;color:var(--green);font-weight:700}
 .tr-dim{color:var(--faint)}
 .tr-wait{color:var(--amber)}
-.prov-card{background:var(--surface2);border:1px solid var(--line);border-radius:11px;padding:12px 14px;display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
-.pfield label{display:flex;gap:6px;align-items:center;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:6px}
+.prov-card{background:var(--surface2);border:1px solid var(--line);border-radius:11px;padding:8px 10px;display:flex;align-items:center;gap:10px;flex-wrap:nowrap;min-height:58px}
+.pfield{min-width:0}
+.pfield:first-child{width:150px;flex:none}
+.pfield label{display:flex;gap:6px;align-items:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:3px}
 .pfield label .ic{width:13px;height:13px;color:var(--teal)}
-.input,select.input{height:34px;border:1px solid var(--line2);border-radius:8px;background:var(--surface);padding:0 10px;font:13px var(--font-u);color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
+.input,select.input{height:30px;border:1px solid var(--line2);border-radius:7px;background:var(--surface);padding:0 9px;font:12.5px var(--font-u);color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
 .input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(14,107,91,.13)}
 select.input{cursor:pointer}
-.grow{flex:1;min-width:180px}
-.gap-box{background:var(--paper);border:1px solid var(--line2);border-radius:9px;padding:8px 12px 9px}
-.gap-box label{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);font-weight:700;display:block;margin-bottom:5px}
+.grow{flex:1;min-width:260px}
+.gap-box{background:var(--paper);border:1px solid var(--line2);border-radius:8px;padding:5px 8px 6px;flex:none}
+.gap-box label{font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:700;display:block;margin-bottom:3px}
 .gap-in{display:flex;align-items:center;gap:6px}
-.gap-in input{width:64px;height:28px;border:1px solid var(--line2);border-radius:7px;background:var(--surface);text-align:center;font:12.5px var(--font-m);color:var(--ink);outline:none}
+.gap-in input{width:56px;height:25px;border:1px solid var(--line2);border-radius:6px;background:var(--surface);text-align:center;font:12px var(--font-m);color:var(--ink);outline:none}
 .gap-in input:focus{border-color:var(--teal)}
 .gap-in span{color:var(--muted);font-size:12px}
-.gap-box small{display:block;color:var(--faint);font-size:10.5px;margin-top:4px}
+.gap-box small{display:block;color:var(--faint);font-size:9px;margin-top:1px}
+.prov-card>[data-act="apikeys"]{height:30px;white-space:nowrap;flex:none}
 .job-card{background:var(--surface);border:1px solid var(--line2);border-radius:11px;padding:13px 16px;display:flex;flex-direction:column;gap:9px}
 .job-top{display:flex;align-items:center;gap:12px}
 .job-bar{flex:1;height:9px;border-radius:99px;background:var(--paper2);border:1px solid var(--line);overflow:hidden}
@@ -344,6 +355,11 @@ tr.asel{background:var(--sel)}
   .lib-sidebar{width:100%;max-height:280px}
   .ws-grid{grid-template-columns:1fr}
   .stats{grid-template-columns:repeat(2,1fr)}
+  .prov-card{flex-wrap:wrap;align-items:flex-end}
+  .prov-card .pfield:first-child{width:150px}
+  .prov-card .grow{min-width:220px}
+  .chapter-range{min-width:100%;justify-content:flex-start;flex-wrap:wrap}
+  .chapter-range .exclude-input{width:min(230px,calc(100% - 170px))}
 }
 </style>
 </head>
@@ -758,7 +774,17 @@ function renderDetail(){
    <div class="stat" style="--sc:var(--red)"><div class="stat-n">${c.failed}</div><div class="stat-l">Failed</div></div>
  </div>
  <div class="card table-card">
-   <div class="table-tools"><span class="tt-l">${ic('books')} Chapter manifest</span><span id="selCount"></span></div>
+   <div class="table-tools">
+    <span class="tt-l">${ic('books')} Chapter manifest <span id="selCount"></span></span>
+    <div class="chapter-range">
+     <label for="rangeFrom">Select</label>
+     <input class="range-num" id="rangeFrom" type="number" min="1" placeholder="From" aria-label="First chapter">
+     <span class="range-dash">-</span>
+     <input class="range-num" id="rangeTo" type="number" min="1" placeholder="To" aria-label="Last chapter">
+     <input class="exclude-input" id="rangeExclude" type="text" placeholder="Exclude: 3-6, 8-10, 13" aria-label="Chapters to exclude">
+     <button class="btn btn-outline" id="btnSelectRange">Select interval</button>
+    </div>
+   </div>
    <div class="table-wrap"><table>
      <thead><tr><th class="c-cb"><input type="checkbox" id="cbAll" title="Select all"></th><th>#</th><th>Title</th><th>Status</th><th>Translation</th></tr></thead>
      <tbody id="chapBody"></tbody>
@@ -804,6 +830,32 @@ function renderChapters(){
  $('#cbAll').checked=nv.chapters.length>0&&nv.chapters.every(c=>state.checked.has(c.num));
  refreshControls();
 }
+function parseChapterRanges(value){
+ const numbers=new Set(),parts=value.split(',').map(part=>part.trim()).filter(Boolean);
+ for(const part of parts){
+  const match=part.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+  if(!match)return null;
+  const start=Number(match[1]),end=Number(match[2]||match[1]);
+  if(start<1||end<start)return null;
+  for(let number=start;number<=end;number++)numbers.add(number);
+ }
+ return numbers;
+}
+function selectChapterInterval(){
+ const nv=current();if(!nv)return;
+ const from=Number($('#rangeFrom')?.value),to=Number($('#rangeTo')?.value);
+ if(!Number.isInteger(from)||!Number.isInteger(to)||from<1||to<from){
+  toast('Enter a valid chapter interval, such as 5-200.','warn');return;
+ }
+ const excluded=parseChapterRanges($('#rangeExclude')?.value||'');
+ if(!excluded){toast('Use exclusions like 3-6, 8-10, 13.','warn');return}
+ state.checked.clear();
+ nv.chapters.forEach(chapter=>{
+  if(chapter.num>=from&&chapter.num<=to&&!excluded.has(chapter.num))state.checked.add(chapter.num);
+ });
+ renderChapters();
+ toast(`${state.checked.size} chapter(s) selected.`,'ok');
+}
 function refreshControls(){
  const nv=current();if(!nv)return;
  const c=counts(nv),job=!!state.job;
@@ -828,6 +880,7 @@ $('#libDetail').addEventListener('click',e=>{
  if(e.target.closest('#btnScrape'))return startScrape();
  if(e.target.closest('#btnTransAll'))return startTranslate(false);
  if(e.target.closest('#btnTransSel'))return startTranslate(true);
+ if(e.target.closest('#btnSelectRange'))return selectChapterInterval();
  if(e.target.closest('#btnEpub'))return startEpub();
  if(e.target.closest('#btnDrive'))return startDriveUpload();
  if(e.target.closest('#btnDelNovel'))return deleteNovel(current());
