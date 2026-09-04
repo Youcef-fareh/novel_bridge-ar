@@ -92,19 +92,26 @@ class GalaxyNovelsAdapter(SiteAdapter):
         )
 
     async def get_chapter_list(self, novel_url: str) -> List[ChapterRef]:
-        html = await _fetch_galaxy_html(novel_url, ".wor-novel-chapters-list, [data-index-url]")
+        html = await _fetch_galaxy_html(
+            novel_url, ".wor-novel-chapters-list, [data-manifest-url], [data-index-url]"
+        )
         
         refs: list[ChapterRef] = []
         seen_urls = set()
 
-        # Method 1: Check for data-index-url (GalaxyNovels full JSON chapter manifest with all 1000+ chapters)
+        # Method 1: Read the full chapter manifest before falling back to the paginated DOM.
         if _SELECTOLAX_AVAILABLE:
             tree = HTMLParser(html)
-            container = tree.css_first(".wor-novel-chapters-wrap, [data-index-url]")
-            if container and container.attributes.get("data-index-url"):
-                index_url = container.attributes.get("data-index-url")
+            container = tree.css_first(
+                ".wor-novel-chapters-wrap, [data-manifest-url], [data-index-url]"
+            )
+            if container:
+                index_url = (
+                    container.attributes.get("data-manifest-url")
+                    or container.attributes.get("data-index-url")
+                )
                 try:
-                    json_str = await fetch_html(index_url, _SITE_ID)
+                    json_str = await fetch_html(urljoin(novel_url, index_url), _SITE_ID)
                     data = json.loads(json_str)
                     raw_chapters = data.get("chapters", [])
                     for item in raw_chapters:
@@ -158,13 +165,21 @@ class GalaxyNovelsAdapter(SiteAdapter):
                     r.index = i
 
         if not refs:
-            html = await fetch_html_playwright(novel_url, ".wor-novel-chapters-list, [data-index-url]")
+            html = await fetch_html_playwright(
+                novel_url, ".wor-novel-chapters-list, [data-manifest-url], [data-index-url]"
+            )
             tree = HTMLParser(html) if _SELECTOLAX_AVAILABLE else None
             if tree:
-                container = tree.css_first(".wor-novel-chapters-wrap, [data-index-url]")
-                index_url = container.attributes.get("data-index-url") if container else ""
+                container = tree.css_first(
+                    ".wor-novel-chapters-wrap, [data-manifest-url], [data-index-url]"
+                )
+                index_url = (
+                    (container.attributes.get("data-manifest-url")
+                     or container.attributes.get("data-index-url"))
+                    if container else ""
+                )
                 if index_url:
-                    index_html = await fetch_html_playwright(index_url)
+                    index_html = await fetch_html_playwright(urljoin(novel_url, index_url))
                     try:
                         data = json.loads(index_html)
                         raw_chapters = data.get("chapters", [])

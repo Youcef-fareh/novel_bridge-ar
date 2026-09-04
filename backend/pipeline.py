@@ -230,6 +230,10 @@ async def run_translation_job(
     if not novel:
         raise ValueError(f"Novel {novel_id} not found.")
 
+    adapter = AdapterRegistry.find(novel.source_url)
+    if adapter and getattr(adapter, "is_native_arabic", False):
+        raise ValueError("This novel is already in Arabic and does not need translation.")
+
     provider = get_provider(provider_name, model=model_name)
     glossary = get_all_glossary_rules()
 

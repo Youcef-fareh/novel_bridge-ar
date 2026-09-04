@@ -93,6 +93,44 @@ def test_adapter_registry():
     assert unknown is None
 
 
+@pytest.mark.asyncio
+async def test_galaxy_uses_full_manifest(monkeypatch):
+    import backend.adapters.galaxynovels as galaxy_module
+
+    novel_url = "https://galaxynovels.com/novel/example/"
+    html = '<div class="wor-novel-chapters-wrap" data-manifest-url="/api/chapters.json"></div>'
+    manifest = '{"chapters": [{"url": "/chapter-1/", "label": "Chapter 1"}, {"url": "/chapter-2/", "label": "Chapter 2"}]}'
+
+    monkeypatch.setattr(galaxy_module, "_fetch_galaxy_html", AsyncMock(return_value=html))
+    fetch_manifest = AsyncMock(return_value=manifest)
+    monkeypatch.setattr(galaxy_module, "fetch_html", fetch_manifest)
+
+    refs = await galaxy_module.GalaxyNovelsAdapter().get_chapter_list(novel_url)
+
+    assert [ref.title for ref in refs] == ["Chapter 1", "Chapter 2"]
+    fetch_manifest.assert_awaited_once_with(
+        "https://galaxynovels.com/api/chapters.json", "galaxynovels"
+    )
+
+
+@pytest.mark.asyncio
+async def test_native_arabic_novel_cannot_be_queued_for_translation(monkeypatch):
+    import backend.pipeline as pipeline_module
+    from backend.adapters.galaxynovels import GalaxyNovelsAdapter
+    from backend.models import Novel
+
+    novel = Novel(
+        id=3, title="Arabic novel", source_url="https://galaxynovels.com/novel/example/",
+        source_site="galaxynovels",
+    )
+    monkeypatch.setattr(pipeline_module, "get_novel", lambda novel_id: novel)
+    monkeypatch.setattr(pipeline_module, "get_provider", MagicMock())
+    pipeline_module.AdapterRegistry.register(GalaxyNovelsAdapter())
+
+    with pytest.raises(ValueError, match="already in Arabic"):
+        await pipeline_module.run_translation_job(novel.id)
+
+
 # ── Test: system prompt builder ────────────────────────────────────────────────
 def test_system_prompt_builder():
     from backend.models import GlossaryRule

@@ -145,6 +145,9 @@ async def translate_novel(novel_id: int, req: TranslateRequest, background_tasks
     novel = get_novel(novel_id)
     if not novel:
         raise HTTPException(404, "Novel not found")
+    adapter = AdapterRegistry.find(novel.source_url)
+    if adapter and getattr(adapter, "is_native_arabic", False):
+        raise HTTPException(400, "This novel is already in Arabic and does not need translation.")
     background_tasks.add_task(_bg_translate, novel_id, req.chapter_ids, req.provider, req.model)
     return {"message": "Translation job started"}
 
