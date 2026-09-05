@@ -3,20 +3,31 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from pathlib import Path
 from typing import List
 from urllib.parse import urljoin, urlsplit, urlunsplit
+
+logger = logging.getLogger("novelbridge.adapters.lightnovelpub")
 
 try:
     from selectolax.parser import HTMLParser
     _SELECTOLAX_AVAILABLE = True
 except ImportError:
     _SELECTOLAX_AVAILABLE = False
-    from bs4 import BeautifulSoup
+
+from bs4 import BeautifulSoup
 
 from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
-from backend.adapters.fetcher import fetch_html_playwright, parse_attr, parse_chapter_body, parse_links, parse_text
+from backend.adapters.fetcher import (
+    fetch_html_nodriver,
+    fetch_html_playwright,
+    parse_attr,
+    parse_chapter_body,
+    parse_links,
+    parse_text,
+)
 
 _SITE_ID = "lightnovelpub"
 _BASE = "https://lightnovelpub.me"
@@ -43,22 +54,20 @@ def _chapter_page_url(novel_url: str, page_number: int) -> str:
     return urlunsplit((parsed.scheme or "https", netloc, path, "", ""))
 
 
-async def _goto_lightnovelpub(page, url: str) -> None:
-    """Navigate through LightNovelPub's occasionally slow server reliably."""
-    last_error = None
-    for attempt in range(3):
-        try:
-            await page.goto(url, wait_until="commit", timeout=60_000)
-            try:
-                await page.wait_for_load_state("domcontentloaded", timeout=30_000)
-            except Exception:
-                pass
-            return
-        except Exception as exc:
-            last_error = exc
-            if attempt < 2:
-                await asyncio.sleep(2 * (attempt + 1))
-    raise last_error
+async def _fetch_lightnovelpub_html(url: str, wait_selector: str = "") -> str:
+    """Fetch a LightNovelPub page, bypassing Cloudflare.
+
+    Strategy:
+    1. nodriver (undetected Chrome subprocess)
+    2. Fall back to Playwright if nodriver is not available or fails
+    """
+    try:
+        return await fetch_html_nodriver(url, wait_selector=wait_selector, timeout=45)
+    except ImportError:
+        logger.info("nodriver not installed; falling back to Playwright")
+    except Exception as e:
+        logger.warning("nodriver fetch failed for %s: %s; falling back to Playwright", url, e)
+    return await fetch_html_playwright(url, wait_selector)
 
 
 def _chapter_refs(html: str, page_url: str, seen_urls: set[str], start_index: int) -> list[ChapterRef]:
@@ -99,14 +108,14 @@ def _chapter_refs(html: str, page_url: str, seen_urls: set[str], start_index: in
 class LightNovelPubAdapter(SiteAdapter):
     site_id = _SITE_ID
     source_language = "English"
-    scraping_method = "Playwright pagination"
+    scraping_method = "nodriver (Cloudflare bypass)"
 
     def can_handle(self, url: str) -> bool:
         lowered = url.lower()
         return "lightnovelpub.me" in lowered or "novellive.app" in lowered
 
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
-        html = await fetch_html_playwright(novel_url, ".m-desc .tit")
+        html = await _fetch_lightnovelpub_html(novel_url, ".m-desc .tit, h1")
         title = parse_text(html, _split_selectors(_SEL.get("novel_title", ".m-desc .tit, h1"))) or "Unknown Title"
         author = parse_text(html, _split_selectors(_SEL.get("novel_author", ".m-book1 .item [title=Author] + .right a, .m-book1 .item .right a")))
         cover_url = parse_attr(html, _split_selectors(_SEL.get("novel_cover", ".m-book1 .pic img, .m-book1 img")), "src")
@@ -121,57 +130,71 @@ class LightNovelPubAdapter(SiteAdapter):
         )
 
     async def get_chapter_list(self, novel_url: str) -> List[ChapterRef]:
-        """Read every 40-chapter page using LightNovelPub's numbered URLs."""
-        try:
-            from playwright.async_api import async_playwright
-        except ImportError:
-            html = await fetch_html_playwright(novel_url, ".m-newest2 .ul-list5")
-            return _chapter_refs(html, novel_url, set(), 0)
-
+        """Read all chapter pages for the novel across multiple pagination pages."""
         chapter_selector = _SEL.get("chapter_list", ".m-newest2 .ul-list5 a.con")
-        next_selector = _SEL.get("chapter_list_next", ".index-container-btn")
+        wait_sel = chapter_selector.split(",")[0].strip()
+
         refs: list[ChapterRef] = []
         seen_urls: set[str] = set()
-        visited_pages: set[str] = set()
+        visited_urls: set[str] = set()
 
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(headless=True)
-            try:
-                page = await browser.new_page()
-                await _goto_lightnovelpub(page, novel_url)
-                for _ in range(500):
-                    page_url = page.url
-                    if page_url in visited_pages:
-                        break
-                    visited_pages.add(page_url)
-                    try:
-                        await page.wait_for_selector(chapter_selector, timeout=15_000)
-                    except Exception:
-                        pass
-                    html = await page.content()
-                    refs.extend(_chapter_refs(html, page_url, seen_urls, len(refs)))
+        current_url: str | None = novel_url
+        page_num = 1
+        max_pages = 500
 
-                    next_link = page.locator(next_selector).filter(
-                        has_text=re.compile(r"^\s*Next\s*$", re.IGNORECASE)
-                    ).last
-                    if not await next_link.count():
-                        break
-                    next_url = await next_link.get_attribute("href")
-                    if not next_url:
-                        break
-                    next_url = urljoin(page_url, next_url)
-                    if next_url in visited_pages:
-                        break
-                    await _goto_lightnovelpub(page, next_url)
-            finally:
-                await browser.close()
+        while current_url and current_url not in visited_urls and page_num <= max_pages:
+            visited_urls.add(current_url)
+            html = await _fetch_lightnovelpub_html(current_url, wait_selector=wait_sel)
+            page_refs = _chapter_refs(html, current_url, seen_urls, len(refs))
+            if not page_refs:
+                break
+            refs.extend(page_refs)
 
-        refs.sort(key=lambda ref: (int(re.search(r"chapter-(\d+)", ref.source_url, re.IGNORECASE).group(1)) if re.search(r"chapter-(\d+)", ref.source_url, re.IGNORECASE) else ref.index))
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Determine max_pages from 'Last' button if present on page 1
+            if page_num == 1:
+                for btn in soup.select(".index-container-btn, a[rel=last], .pagination a"):
+                    if btn.get_text(strip=True).lower() == "last":
+                        m = re.search(r"/(\d+)(?:[#?]|$)", btn.get("href", ""))
+                        if m:
+                            max_pages = int(m.group(1))
+                        break
+
+            # Find next page
+            next_a = None
+            for btn in soup.select(".index-container-btn, a[rel=next], .pagination a"):
+                if btn.get_text(strip=True).lower() == "next":
+                    next_a = btn
+                    break
+
+            if next_a and next_a.get("href"):
+                next_url = urljoin(current_url, next_a["href"])
+                page_num += 1
+                if next_url in visited_urls:
+                    break
+                current_url = next_url
+            elif page_num < max_pages:
+                page_num += 1
+                current_url = _chapter_page_url(novel_url, page_num)
+            else:
+                break
+
+        refs.sort(key=lambda ref: (
+            int(re.search(r"chapter-(\d+)", ref.source_url, re.IGNORECASE).group(1))
+            if re.search(r"chapter-(\d+)", ref.source_url, re.IGNORECASE)
+            else ref.index
+        ))
         for index, ref in enumerate(refs):
             ref.index = index
         return refs
 
     async def get_chapter_text(self, chapter_url: str) -> str:
-        html = await fetch_html_playwright(chapter_url, ".read-content, .chapter-content, article")
-        selectors = _split_selectors(_SEL.get("chapter_text", ".read-content, .chapter-content, #chapter-container, article"))
+        html = await _fetch_lightnovelpub_html(
+            chapter_url,
+            wait_selector=".txt, .read-content, .chapter-content, #chapter-container, article",
+        )
+        selectors = _split_selectors(
+            _SEL.get("chapter_text", ".read-content, .txt, .chapter-content, #chapter-container, article")
+        )
         return parse_chapter_body(html, selectors) or parse_text(html, selectors) or ""

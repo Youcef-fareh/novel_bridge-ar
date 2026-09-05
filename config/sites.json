@@ -79,7 +79,7 @@
       "novel_description": ".m-desc .inner, .abstract + .txt",
       "chapter_list": ".m-newest2 .ul-list5 a.con",
       "chapter_list_next": ".index-container-btn",
-      "chapter_text": ".read-content, .chapter-content, #chapter-container, article"
+      "chapter_text": ".read-content, .txt, .chapter-content, #chapter-container, article"
     },
     "request_delay_min": 0.8,
     "request_delay_max": 2.5,
