@@ -17,8 +17,10 @@ from pydantic import BaseModel
 
 from backend.adapters.base import AdapterRegistry
 from backend.adapters.galaxynovels import GalaxyNovelsAdapter
+from backend.adapters.lightnovelpub import LightNovelPubAdapter
 from backend.adapters.novelfire import NovelFireAdapter
 from backend.adapters.novelphoenix import NovelPhoenixAdapter
+from backend.adapters.ranovel import RanovelAdapter
 from backend.adapters.wuxiaspot import WuxiaSpotAdapter
 from backend.database import (
     add_glossary_rule, create_novel, delete_glossary_rule,
@@ -54,6 +56,8 @@ async def startup():
     AdapterRegistry.register(NovelFireAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
+    AdapterRegistry.register(LightNovelPubAdapter())
+    AdapterRegistry.register(RanovelAdapter())
     AdapterRegistry.register(WuxiaSpotAdapter())
 
 

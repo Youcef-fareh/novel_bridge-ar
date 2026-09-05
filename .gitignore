@@ -63,3 +63,6 @@ output/
 # HTML scraping examples
 data/
 example for html to some wbsite to help in scraping
+
+# Scratch scripts and temporary test files
+scratch/

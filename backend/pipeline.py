@@ -151,11 +151,6 @@ async def run_scrape_job(
         if progress_cb:
             progress_cb(0, 1, "Fetching chapter list…")
         chapter_refs = await adapter.get_chapter_list(novel.source_url)
-        total = len(chapter_refs)
-        update_job(job.id, total_items=total)
-
-        if progress_cb:
-            progress_cb(0, total, f"Found {total} chapters. Starting scrape…")
 
         # Seed chapter rows (idempotent)
         for ref in chapter_refs:
@@ -168,7 +163,22 @@ async def run_scrape_job(
             if chapters_by_index.get(ref.index)
             and chapters_by_index[ref.index].status in (ChapterStatus.pending, ChapterStatus.failed)
         ]
-        done += total - len(pending_refs)
+        total = len(pending_refs)
+        update_job(job.id, total_items=total)
+
+        if progress_cb:
+            progress_cb(
+                0,
+                total,
+                f"Found {len(chapter_refs)} chapters; {total} need scraping…",
+            )
+
+        if not pending_refs:
+            update_novel(novel_id, status=NovelStatus.scraped)
+            update_job(job.id, status=JobStatus.completed, progress=100, done_items=0)
+            if progress_cb:
+                progress_cb(0, 0, "All chapters are already scraped.")
+            return get_job_obj(job.id)
 
         async def scrape_one(ref):
             nonlocal done

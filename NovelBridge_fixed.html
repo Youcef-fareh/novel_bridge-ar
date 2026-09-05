@@ -864,7 +864,7 @@ function refreshControls(){
  const pend=nv.chapters.filter(x=>x.status==='pending').length;
  const el=id=>$('#'+id);
  if(el('selCount'))el('selCount').textContent=`${state.checked.size} selected`;
- el('btnScrape').disabled=job||(nv.chapters.length>0&&pend===0);
+ el('btnScrape').disabled=job;
  el('btnTransAll').disabled=job||c.scraped===0;
  el('btnTransSel').disabled=job||!chkTranslatable;
  el('btnDelTrans').disabled=job||!chkTrans;

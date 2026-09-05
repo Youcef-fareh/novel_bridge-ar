@@ -16,7 +16,7 @@ from PyQt6.QtCore import (
     QObject, QRunnable, QSettings, Qt, QThread, QThreadPool, QUrl,
     pyqtSignal, pyqtSlot,
 )
-from PyQt6.QtGui import QAction, QFont, QIcon, QPixmap
+from PyQt6.QtGui import QAction, QFont, QGuiApplication, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QApplication, QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -28,8 +28,10 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from backend.adapters.base import AdapterRegistry
 from backend.adapters.galaxynovels import GalaxyNovelsAdapter
+from backend.adapters.lightnovelpub import LightNovelPubAdapter
 from backend.adapters.novelfire import NovelFireAdapter
 from backend.adapters.novelphoenix import NovelPhoenixAdapter
+from backend.adapters.ranovel import RanovelAdapter
 from backend.adapters.wuxiaspot import WuxiaSpotAdapter
 from backend.database import (
     create_novel, delete_novel, get_all_novels, get_chapters,
@@ -1295,8 +1297,15 @@ def run_app() -> None:
     AdapterRegistry.register(NovelFireAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
+    AdapterRegistry.register(LightNovelPubAdapter())
+    AdapterRegistry.register(RanovelAdapter())
     AdapterRegistry.register(WuxiaSpotAdapter())
     load_custom_adapters()
+
+    # High-DPI support
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
 
     app = QApplication(sys.argv)
     app.setApplicationName("NovelBridge")
@@ -1311,11 +1320,6 @@ def run_app() -> None:
     stylesheet = load_stylesheet()
     if stylesheet:
         app.setStyleSheet(stylesheet)
-
-    # High-DPI support
-    app.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
 
     window = HtmlMainWindow()
     window.show()

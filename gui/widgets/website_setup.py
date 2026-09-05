@@ -33,7 +33,7 @@ from backend.adapters.base import AdapterRegistry, SiteAdapter
 
 
 _CUSTOM_DIR = Path(__file__).parent.parent.parent / "backend" / "adapters" / "custom"
-_BUILTIN_SITE_IDS = {"novelfire", "novelphoenix", "galaxynovels", "wuxiaspot"}
+_BUILTIN_SITE_IDS = {"novelfire", "novelphoenix", "galaxynovels", "lightnovelpub", "ranovel", "wuxiaspot"}
 _HIDDEN_SITE_IDS = {"galaxynovels"}
 
 

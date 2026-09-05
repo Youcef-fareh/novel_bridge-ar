@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+import subprocess
+import weakref
 
 import httpx
 
@@ -102,20 +104,129 @@ async def fetch_html_playwright(url: str, wait_for: str = "") -> str:
             os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(bundled_browsers))
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--window-size=1280,800",
+            ],
+        )
         try:
-            page = await browser.new_page(user_agent=_HEADERS["User-Agent"])
+            context = await browser.new_context(
+                user_agent=_HEADERS["User-Agent"],
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+            )
+            # Hide the 'webdriver' property that bot-detection scripts check for.
+            await context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            )
+            page = await context.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=45_000)
             if wait_for:
                 try:
-                    await page.wait_for_selector(wait_for, timeout=15_000)
+                    await page.wait_for_selector(wait_for, timeout=20_000)
                 except Exception:
                     pass
             else:
-                await page.wait_for_timeout(1_000)
+                await page.wait_for_timeout(2_000)
             return await page.content()
         finally:
             await browser.close()
+
+
+_nodriver_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = weakref.WeakKeyDictionary()
+
+
+def _get_nodriver_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _nodriver_locks.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _nodriver_locks[loop] = lock
+    return lock
+
+
+async def fetch_html_nodriver(url: str, wait_selector: str = "", timeout: int = 45) -> str:
+    """Fetch a page using nodriver (undetected Chrome) to bypass Cloudflare.
+
+    **Runs nodriver in a fully isolated subprocess** so that Chrome's window
+    system does not conflict with the Qt GUI process (which would cause a
+    ``setHighDpiScaleFactorRoundingPolicy`` crash when opening a headful window
+    inside the same process).
+
+    Requests are serialized with a per-event-loop lock so multiple chapter
+    scrapes do not launch conflicting headful browser instances simultaneously.
+
+    The child process writes the rendered HTML to a temp file; this function
+    reads it back and returns it.
+
+    Args:
+        url: The page URL.
+        wait_selector: CSS selector to wait for before capturing HTML.
+        timeout: Maximum seconds to wait for the selector. Default 45 s.
+
+    Raises:
+        ImportError: if ``nodriver`` is not installed.
+        RuntimeError: if the subprocess fails or times out.
+    """
+    import os
+    import tempfile
+
+    # Fail fast with a clear message if nodriver is not installed.
+    try:
+        import nodriver as _nd  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "nodriver is not installed. Run:  pip install nodriver"
+        )
+
+    _script = Path(__file__).parent / "nodriver_fetch.py"
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".nodriver.html")
+    os.close(fd)
+
+    kwargs = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    async with _get_nodriver_lock():
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                str(_script),
+                url,
+                wait_selector or "",
+                str(timeout),
+                tmp_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                **kwargs,
+            )
+            try:
+                _, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=float(timeout) + 30,
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                raise RuntimeError("nodriver subprocess timed out")
+
+            if proc.returncode != 0:
+                err = stderr_bytes.decode("utf-8", errors="replace")[:400]
+                raise RuntimeError(f"nodriver subprocess failed: {err}")
+
+            html = Path(tmp_path).read_text(encoding="utf-8", errors="replace")
+            if not html:
+                raise RuntimeError("nodriver returned empty HTML")
+            return html
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 def parse_text(html: str, css_selectors: list[str]) -> Optional[str]:

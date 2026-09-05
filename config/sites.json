@@ -69,5 +69,37 @@
     "request_delay_max": 2.5,
     "use_curl_cffi": true,
     "respect_robots_txt": false
+  },
+  "lightnovelpub": {
+    "base_url": "https://lightnovelpub.me",
+    "selectors": {
+      "novel_title": ".m-desc .tit, h1",
+      "novel_author": ".m-book1 .item [title=Author] + .right a, .m-book1 .item .right a",
+      "novel_cover": ".m-book1 .pic img, .m-book1 img",
+      "novel_description": ".m-desc .inner, .abstract + .txt",
+      "chapter_list": ".m-newest2 .ul-list5 a.con",
+      "chapter_list_next": ".index-container-btn",
+      "chapter_text": ".read-content, .chapter-content, #chapter-container, article"
+    },
+    "request_delay_min": 0.8,
+    "request_delay_max": 2.5,
+    "use_curl_cffi": true,
+    "respect_robots_txt": false
+  },
+  "ranovel": {
+    "base_url": "https://ranovel.com",
+    "selectors": {
+      "novel_title": ".post-title, h1.entry-title, h1",
+      "novel_author": ".post-content_item .summary-content a, .author-content a, .post-content_item",
+      "novel_cover": ".summary_image img, .summary_image a img, .profile-manga .summary_image img",
+      "novel_description": ".description-summary, .summary_content, .summary_content p",
+      "chapter_list": "#manga-chapters-holder .wp-manga-chapter a",
+      "chapter_list_next": ".pagination a.next, .nav-links .nav-next a, a[rel=next]",
+      "chapter_text": ".reading-content, .text-left, .entry-content, #chapter-container"
+    },
+    "request_delay_min": 0.8,
+    "request_delay_max": 2.5,
+    "use_curl_cffi": true,
+    "respect_robots_txt": false
   }
 }

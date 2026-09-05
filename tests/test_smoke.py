@@ -64,14 +64,18 @@ def test_interrupted_translation_is_retryable(tmp_path, monkeypatch):
 def test_adapter_registry():
     from backend.adapters.base import AdapterRegistry
     from backend.adapters.galaxynovels import GalaxyNovelsAdapter
+    from backend.adapters.lightnovelpub import LightNovelPubAdapter
     from backend.adapters.novelfire import NovelFireAdapter
     from backend.adapters.novelphoenix import NovelPhoenixAdapter
+    from backend.adapters.ranovel import RanovelAdapter
     from backend.adapters.wtrlab import WTRLabAdapter
 
     AdapterRegistry.register(NovelFireAdapter())
     AdapterRegistry.register(WTRLabAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
+    AdapterRegistry.register(LightNovelPubAdapter())
+    AdapterRegistry.register(RanovelAdapter())
 
     nf = AdapterRegistry.find("https://novelfire.net/book/test")
     assert nf is not None
@@ -89,8 +93,88 @@ def test_adapter_registry():
     assert gn is not None
     assert gn.site_id == "galaxynovels"
 
+    lnp = AdapterRegistry.find("https://lightnovelpub.me/book/example")
+    assert lnp is not None
+    assert lnp.site_id == "lightnovelpub"
+
+    ranovel = AdapterRegistry.find("https://ranovel.com/novel/example/")
+    assert ranovel is not None
+    assert ranovel.site_id == "ranovel"
+
     unknown = AdapterRegistry.find("https://some-random-site.com")
     assert unknown is None
+
+
+def test_ranovel_extracts_and_orders_chapters():
+    from backend.adapters.ranovel import _extract_refs, RanovelAdapter
+
+    html = """<div id="manga-chapters-holder">
+        <li class="wp-manga-chapter"><a href="/novel/example/chapter-3/">Chapter 3</a></li>
+        <li class="wp-manga-chapter"><a href="/novel/example/chapter-1/">Chapter 1</a></li>
+        <li class="wp-manga-chapter"><a href="/novel/example/chapter-2/">Chapter 2</a></li>
+    </div>"""
+    refs = _extract_refs(html, "https://ranovel.com/novel/example/", set(), 0)
+
+    ordered = RanovelAdapter._ordered(refs)
+    assert [ref.title for ref in ordered] == ["Chapter 1", "Chapter 2", "Chapter 3"]
+
+
+def test_ranovel_honeypot_cleaning_removes_same_color_bg():
+    """Hidden paragraphs where color == background-color must be removed."""
+    from backend.adapters.ranovel import _clean_chapter_html
+    from bs4 import BeautifulSoup
+
+    html = """<div class="reading-content"><div class="text-left">
+        <p style="color:#262626; background-color:#262626;">Only Ran(o)vel dot com</p>
+        <p>Real chapter content here.</p>
+    </div></div>"""
+
+    cleaned = _clean_chapter_html(html)
+    soup = BeautifulSoup(cleaned, "html.parser")
+    paragraphs = [p.get_text().strip() for p in soup.find_all("p") if p.get_text().strip()]
+    assert "Real chapter content here." in paragraphs
+    assert not any("Ran" in p for p in paragraphs), "Honeypot text should be removed"
+
+
+def test_ranovel_honeypot_cleaning_removes_code_block_divs():
+    """<div class='code-block …'> watermark wrappers must be removed."""
+    from backend.adapters.ranovel import _clean_chapter_html
+    from bs4 import BeautifulSoup
+
+    html = """<div class="reading-content"><div class="text-left">
+        <div class="code-block code-block-3">
+            <p style="color:#262626; background-color:#262626;">Read Novel ranovel com</p>
+        </div>
+        <p>Actual story paragraph.</p>
+    </div></div>"""
+
+    cleaned = _clean_chapter_html(html)
+    soup = BeautifulSoup(cleaned, "html.parser")
+    paragraphs = [p.get_text().strip() for p in soup.find_all("p") if p.get_text().strip()]
+    assert "Actual story paragraph." in paragraphs
+    assert not any("ranovel" in p.lower() for p in paragraphs), "Watermark div should be removed"
+
+
+def test_ranovel_honeypot_cleaning_strips_watermark_lines_from_text():
+    """Lines containing watermark patterns must be dropped from the final text output."""
+    from backend.adapters.ranovel import _WATERMARK_RE
+
+    lines = [
+        "The weather is really crappy.",
+        "Read Novel 𝒓𝒂𝒏𝒐𝒗𝒆𝒍 com",
+        "A battlefield dyed in blood-red skies.",
+        "Only Ran(o)vel dot com",
+        "Standing before the corpse of a giant monster.",
+        "* * * Ranovel dot com * * *",
+    ]
+    clean = [ln for ln in lines if not _WATERMARK_RE.search(ln)]
+    assert clean == [
+        "The weather is really crappy.",
+        "A battlefield dyed in blood-red skies.",
+        "Standing before the corpse of a giant monster.",
+    ]
+
+
 
 
 @pytest.mark.asyncio
@@ -111,6 +195,46 @@ async def test_galaxy_uses_full_manifest(monkeypatch):
     fetch_manifest.assert_awaited_once_with(
         "https://galaxynovels.com/api/chapters.json", "galaxynovels"
     )
+
+
+@pytest.mark.asyncio
+async def test_galaxy_expands_initial_chapter_batch(monkeypatch):
+    import backend.adapters.galaxynovels as galaxy_module
+
+    novel_url = "https://galaxynovels.com/novel/example/"
+    initial = "".join(
+        f'<a href="/chapter-{number}/">Chapter {number}</a>'
+        for number in range(31, 1, -1)
+    )
+    expanded = "".join(
+        f'<a href="/chapter-{number}/">Chapter {number}</a>'
+        for number in range(61, 0, -1)
+    )
+    monkeypatch.setattr(
+        galaxy_module,
+        "_fetch_galaxy_html",
+        AsyncMock(return_value=f'<div class="wor-novel-chapters-list">{initial}</div>'),
+    )
+    monkeypatch.setattr(
+        galaxy_module,
+        "_fetch_galaxy_html_with_all_chapters",
+        AsyncMock(return_value=f'<div class="wor-novel-chapters-list">{expanded}</div>'),
+    )
+
+    refs = await galaxy_module.GalaxyNovelsAdapter().get_chapter_list(novel_url)
+
+    assert len(refs) == 61
+    assert refs[0].title == "Chapter 1"
+    assert refs[-1].title == "Chapter 61"
+
+
+def test_lightnovelpub_numbered_chapter_pages():
+    from backend.adapters.lightnovelpub import _chapter_page_url
+
+    base = "https://lightnovelpub.me/book/example/"
+    assert _chapter_page_url(base, 1) == "https://lightnovelpub.me/book/example"
+    assert _chapter_page_url(base, 2) == "https://novellive.app/book/example/2"
+    assert _chapter_page_url(base + "2", 3) == "https://novellive.app/book/example/3"
 
 
 @pytest.mark.asyncio

@@ -147,13 +147,6 @@ def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path]
             resp = httpx.get(novel.cover_url, timeout=10, follow_redirects=True)
             if resp.status_code == 200:
                 cover_data = resp.content
-                cover_item = epub.EpubItem(
-                    uid="cover_img",
-                    file_name="images/cover.jpg",
-                    media_type="image/jpeg",
-                    content=cover_data,
-                )
-                book.add_item(cover_item)
                 book.set_cover("images/cover.jpg", cover_data)
         except Exception:
             pass  # Cover is optional

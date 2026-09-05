@@ -45,6 +45,52 @@ async def _fetch_galaxy_html(url: str, wait_for: str = "") -> str:
         return await fetch_html_playwright(url, wait_for)
 
 
+async def _fetch_galaxy_html_with_all_chapters(url: str) -> str:
+    """Render the chapter list and click its load-more control until exhausted."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required to expand the Galaxy chapter list") from exc
+
+    chapter_selector = ".wor-novel-chapters-list a, .wor-novel-chapter-item a"
+    more_pattern = re.compile(r"عرض المزيد|المزيد|load\s+more|more", re.IGNORECASE)
+
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True)
+        try:
+            page = await browser.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+            try:
+                await page.wait_for_selector(chapter_selector, timeout=15_000)
+            except Exception:
+                pass
+
+            for _ in range(1000):
+                before = await page.locator(chapter_selector).count()
+                more = page.locator(
+                    ".wor-novel-chapters-wrap button, "
+                    ".wor-novel-chapters-wrap a, "
+                    ".wor-novel-chapters-list button, "
+                    ".wor-novel-chapters-list a"
+                ).filter(has_text=more_pattern)
+                if not await more.count() or not await more.last.is_visible():
+                    break
+
+                await more.last.click()
+                try:
+                    await page.wait_for_function(
+                        "([selector, count]) => document.querySelectorAll(selector).length > count",
+                        [chapter_selector, before],
+                        timeout=15_000,
+                    )
+                except Exception:
+                    break
+
+            return await page.content()
+        finally:
+            await browser.close()
+
+
 class GalaxyNovelsAdapter(SiteAdapter):
     site_id = _SITE_ID
     is_native_arabic = True
@@ -152,6 +198,43 @@ class GalaxyNovelsAdapter(SiteAdapter):
                 if href and "/chapter" in href and href not in seen_urls:
                     seen_urls.add(href)
                     refs.append(ChapterRef(index=len(refs), title=text.strip() or f"Chapter {len(refs)+1}", source_url=href))
+
+        # The initial HTML contains only 30 chapters. Expand the client-side
+        # list so older chapters are available to the pipeline as well.
+        if refs and len(refs) <= 30:
+            try:
+                expanded_html = await _fetch_galaxy_html_with_all_chapters(novel_url)
+                if expanded_html != html:
+                    html = expanded_html
+                    refs = []
+                    seen_urls = set()
+                    if _SELECTOLAX_AVAILABLE:
+                        tree = HTMLParser(html)
+                        items = tree.css(".wor-novel-chapters-list a, .wor-novel-chapter-item a")
+                        for a in items:
+                            href = a.attributes.get("href", "")
+                            if not href or "/chapter" not in href:
+                                continue
+                            href = urljoin(novel_url, href)
+                            if href in seen_urls:
+                                continue
+                            seen_urls.add(href)
+                            refs.append(ChapterRef(
+                                index=len(refs),
+                                title=a.text(strip=True) or f"Chapter {len(refs)+1}",
+                                source_url=href,
+                            ))
+                    else:
+                        for text, href in parse_links(html, selectors, base_url=_BASE):
+                            if "/chapter" in href and href not in seen_urls:
+                                seen_urls.add(href)
+                                refs.append(ChapterRef(
+                                    index=len(refs),
+                                    title=text.strip() or f"Chapter {len(refs)+1}",
+                                    source_url=href,
+                                ))
+            except Exception:
+                pass
 
         # GalaxyNovels HTML lists chapters descending (newest to oldest); reverse if needed
         if refs and len(refs) > 1:
