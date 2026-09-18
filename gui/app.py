@@ -32,6 +32,7 @@ from backend.adapters.lightnovelpub import LightNovelPubAdapter
 from backend.adapters.novelfire import NovelFireAdapter
 from backend.adapters.novelphoenix import NovelPhoenixAdapter
 from backend.adapters.ranovel import RanovelAdapter
+from backend.adapters.wtrlab import WTRLabAdapter
 from backend.adapters.wuxiaspot import WuxiaSpotAdapter
 from backend.database import (
     create_novel, delete_novel, get_all_novels, get_chapters,
@@ -1299,6 +1300,7 @@ def run_app() -> None:
     AdapterRegistry.register(GalaxyNovelsAdapter())
     AdapterRegistry.register(LightNovelPubAdapter())
     AdapterRegistry.register(RanovelAdapter())
+    AdapterRegistry.register(WTRLabAdapter())
     AdapterRegistry.register(WuxiaSpotAdapter())
     load_custom_adapters()
 

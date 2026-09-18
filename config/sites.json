@@ -31,7 +31,7 @@
       "novel_description": ".story-desc, .story-description",
       "chapter_list": ".chapter-list a, .chapter-item a",
       "chapter_title": "h1.chapter-title, .chapter-name",
-      "chapter_text": ".chapter-content, .story-part, #chapter-container"
+      "chapter_text": ".chapter-body .wtr-line.pr-line-text, .chapter-body, .tiptap-content, .chapter-content, .story-part, #chapter-container, article, main"
     },
     "request_delay_min": 1.0,
     "request_delay_max": 3.0,

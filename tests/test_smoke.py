@@ -81,7 +81,9 @@ def test_adapter_registry():
     assert nf is not None
     assert nf.site_id == "novelfire"
 
-    wtr = AdapterRegistry.find("https://wtr-lab.com/series/test")
+    wtr = AdapterRegistry.find(
+        "https://wtr-lab.com/en/novel/8937/multifunctional-sword-cultivation-starts-from-taxi?tab=toc"
+    )
     assert wtr is not None
     assert wtr.site_id == "wtrlab"
 
@@ -117,6 +119,54 @@ def test_ranovel_extracts_and_orders_chapters():
 
     ordered = RanovelAdapter._ordered(refs)
     assert [ref.title for ref in ordered] == ["Chapter 1", "Chapter 2", "Chapter 3"]
+
+
+def test_wtrlab_removes_site_shell_from_chapter_text():
+    from backend.adapters.wtrlab import WTRLabAdapter
+
+    text = WTRLabAdapter()._clean_chapter_text(
+        "Please disable your ad blocker to support our site and continue enjoying free content.\n"
+        "A real chapter paragraph with enough text to be retained by the adapter.\n"
+        "Read translated novels and track your reading progress.\n"
+        "Copyright © 2022 - wtr-lab.com"
+    )
+
+    assert text == "A real chapter paragraph with enough text to be retained by the adapter."
+
+
+def test_wtrlab_chooses_longest_content_block():
+        from backend.adapters.wtrlab import WTRLabAdapter
+
+        html = """
+        <div class="tiptap-content"><p>Short sample review.</p></div>
+        <div class="tiptap-content">
+            <p>Chapter paragraph one with the actual story content.</p>
+            <p>Chapter paragraph two continues the actual story content.</p>
+        </div>
+        """
+
+        text = WTRLabAdapter()._best_chapter_candidate(html, [".tiptap-content"])
+
+        assert "actual story content" in text
+        assert "Short sample review" not in text
+
+
+def test_wtrlab_extracts_wtr_lines_in_order():
+        from backend.adapters.wtrlab import WTRLabAdapter
+
+        html = """
+        <div id="chapter-9"><span></span><span></span><div class="chapter-body">
+            <div data-line="0" class="wtr-line pr-line-text">Chapter 9 Portable Space</div>
+            <div data-line="1" class="wtr-line pr-line-text">The real chapter text is here.</div>
+        </div></div>
+        """
+
+        text = WTRLabAdapter()._best_chapter_candidate(
+                html,
+                [".chapter-body .wtr-line.pr-line-text", ".chapter-body"],
+        )
+
+        assert text == "Chapter 9 Portable Space\n\nThe real chapter text is here."
 
 
 def test_ranovel_honeypot_cleaning_removes_same_color_bg():

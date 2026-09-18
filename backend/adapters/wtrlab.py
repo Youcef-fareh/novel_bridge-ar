@@ -14,11 +14,9 @@ Key behavior:
   sees the handful of links that already exist in the raw markup:
   the "Start Reading" link and the ~5-chapter "Latest Release"
   widget.
-- To get the real, complete list this adapter drives a headless
-  browser (Playwright) that opens every accordion section before
-  reading the rendered DOM. If Playwright isn't installed, it falls
-  back to a plain HTTP fetch, which will only recover the small
-  "Latest Release"/"Start Reading" set described above.
+- To get the real, complete list this adapter drives an isolated
+    nodriver browser that opens every accordion section before reading
+    the rendered DOM.
 - The "Latest Release" widget is ignored where detectable, so it
   never masquerades as the full chapter list.
 """
@@ -46,16 +44,9 @@ except ImportError:
     BeautifulSoup = None
     _BS4_AVAILABLE = False
 
-try:
-    from playwright.async_api import async_playwright
-
-    _PLAYWRIGHT_AVAILABLE = True
-except ImportError:
-    _PLAYWRIGHT_AVAILABLE = False
-
 from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
 from backend.adapters.fetcher import (
-    fetch_html,
+    fetch_html_nodriver,
     parse_attr,
     parse_chapter_body,
     parse_text,
@@ -72,6 +63,12 @@ _LATEST_CLASS_TOKENS = (
     "latest-release",
     "latest-list",
 )
+
+_WTR_NOISE_LINES = {
+    "please disable your ad blocker to support our site and continue enjoying free content.",
+    "read translated novels and track your reading progress.",
+    "copyright © 2022 - wtr-lab.com",
+}
 
 _TOC_CONTAINER_SELECTORS = (
     ".table-of-content",
@@ -149,7 +146,9 @@ class WTRLabAdapter(SiteAdapter):
         The description is only reliably present on the About tab, so this
         explicitly requests ?tab=about.
         """
-        html = await fetch_html(_with_tab(novel_url, "about"), _SITE_ID)
+        html = await fetch_html_nodriver(
+            _with_tab(novel_url, "about"), "h1", timeout=90
+        )
 
         title = parse_text(
             html,
@@ -273,32 +272,14 @@ class WTRLabAdapter(SiteAdapter):
         Those sections only render their chapter rows client-side, after
         being clicked open, so a plain HTTP GET can never see them.
 
-        When Playwright is available, this drives a real (headless)
-        browser: load the page, click every accordion section open, then
-        read the fully rendered DOM. This is the supported path.
-
-        Without Playwright, this degrades to a single plain HTTP fetch,
-        which will only recover the "Start Reading" link and the
-        handful of chapters shown in the "Latest Release" widget — not
-        the full list. A warning-worthy situation, but better than
-        crashing outright.
+        Nodriver loads the page, clicks every chapter-range accordion
+        section open, then returns the fully rendered DOM.
         """
         toc_url = _with_tab(novel_url, "toc")
         expected_novel_id = _novel_id_from_url(novel_url)
 
-        if _PLAYWRIGHT_AVAILABLE:
-            html = await self._fetch_rendered_toc_html(toc_url, expected_novel_id)
-            refs = self._extract_chapter_refs(html, toc_url)
-        else:
-            html = await fetch_html(toc_url, _SITE_ID)
-            refs = self._extract_chapter_refs(html, toc_url)
-
-            # The "Latest Release" widget commonly shows only five
-            # chapters. If we see five or fewer, try the Next.js-data
-            # fallback (a no-op on the current site, but harmless and
-            # kept in case a future/alternate build restores it).
-            if len(refs) <= 5:
-                refs.extend(self._extract_chapters_from_next_data(html, toc_url))
+        html = await self._fetch_rendered_toc_html(toc_url, expected_novel_id)
+        refs = self._extract_chapter_refs(html, toc_url)
 
         # Safety net: no matter what happened upstream (a stray SPA
         # navigation during the accordion-click loop, a stale cached
@@ -365,81 +346,12 @@ class WTRLabAdapter(SiteAdapter):
           back to toc_url before continuing, and skip counting that
           click's result.
         """
-        chapters_pattern = re.compile(r"chapters?\s+\d+\s*-\s*\d+", re.IGNORECASE)
-
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-
-            try:
-                page = await browser.new_page()
-                await page.goto(toc_url, wait_until="networkidle")
-
-                triggers = page.locator('[data-slot="accordion-trigger"]')
-                trigger_count = await triggers.count()
-
-                # Snapshot which trigger indices are genuinely chapter-range
-                # accordions *before* clicking anything, since clicking can
-                # change what's on the page and shift indices around.
-                chapter_trigger_indices = []
-                for i in range(trigger_count):
-                    try:
-                        text = (await triggers.nth(i).inner_text()).strip()
-                    except Exception:
-                        continue
-                    if chapters_pattern.search(text):
-                        chapter_trigger_indices.append(i)
-
-                for i in chapter_trigger_indices:
-                    # Re-query each time: the DOM may have re-rendered
-                    # after the previous click.
-                    triggers = page.locator('[data-slot="accordion-trigger"]')
-
-                    if i >= await triggers.count():
-                        continue
-
-                    trigger = triggers.nth(i)
-
-                    try:
-                        text = (await trigger.inner_text()).strip()
-                        if not chapters_pattern.search(text):
-                            # DOM shifted under us; this index no longer
-                            # points at a chapter-range trigger. Skip it
-                            # rather than risk clicking something else.
-                            continue
-
-                        await trigger.scroll_into_view_if_needed()
-                        await trigger.click()
-
-                        # Give the click handler time to fetch/render the
-                        # section's chapter rows before moving on.
-                        await page.wait_for_load_state("networkidle")
-                        await page.wait_for_timeout(300)
-                    except Exception:
-                        # If one section fails to expand, keep going —
-                        # we still want whatever the other sections give.
-                        continue
-
-                    # Guard against a silent client-side navigation away
-                    # from this novel (this site is a Next.js SPA, so a
-                    # misdirected click doesn't throw — it just changes
-                    # the page).
-                    if expected_novel_id is not None:
-                        current_id = _novel_id_from_url(page.url)
-                        if current_id is not None and current_id != expected_novel_id:
-                            print(
-                                f"[wtrlab] warning: navigated away to novel "
-                                f"{current_id!r} while expecting "
-                                f"{expected_novel_id!r}; returning to TOC."
-                            )
-                            await page.goto(toc_url, wait_until="networkidle")
-
-                # Final settle, in case the last click's content was
-                # still streaming in.
-                await page.wait_for_timeout(500)
-
-                return await page.content()
-            finally:
-                await browser.close()
+        return await fetch_html_nodriver(
+            toc_url,
+            wait_selector='[data-slot="accordion-trigger"], button[aria-controls], h1',
+            timeout=120,
+            click_selector='[data-slot="accordion-trigger"], button[aria-controls]',
+        )
 
     # ------------------------------------------------------------------
     # DOM extraction
@@ -482,6 +394,11 @@ class WTRLabAdapter(SiteAdapter):
                     texts.append(whole)
             except Exception:
                 pass
+
+            for attr_name in ("title", "aria-label"):
+                value = self._attr(anchor, attr_name)
+                if value:
+                    texts.append(value)
 
             try:
                 for span in anchor.css("span"):
@@ -596,6 +513,11 @@ class WTRLabAdapter(SiteAdapter):
             whole = anchor.get_text(" ", strip=True)
             if whole:
                 texts.append(whole)
+
+            for attr_name in ("title", "aria-label"):
+                value = anchor.get(attr_name, "")
+                if value:
+                    texts.append(value)
 
             for span in anchor.find_all("span"):
                 t = span.get_text(" ", strip=True)
@@ -1054,26 +976,26 @@ class WTRLabAdapter(SiteAdapter):
         expected_novel_id = _novel_id_from_url(chapter_url)
         expected_chapter = _chapter_number(chapter_url)
 
-        if _PLAYWRIGHT_AVAILABLE:
-            html = await self._fetch_rendered_chapter_html(
-                chapter_url,
-                expected_novel_id,
-                expected_chapter,
-            )
-        else:
-            html = await fetch_html(chapter_url, _SITE_ID)
+        html = await self._fetch_rendered_chapter_html(
+            chapter_url,
+            expected_novel_id,
+            expected_chapter,
+        )
 
         configured = _split_selectors(_SEL.get("chapter_text", ""))
 
         selectors = configured or [
+            ".chapter-body .wtr-line.pr-line-text",
+            ".chapter-body",
             ".chapter-content",
+            ".tiptap-content",
             ".story-part",
             "#chapter-container",
             "article",
             "main",
         ]
 
-        text = parse_chapter_body(html, selectors)
+        text = self._best_chapter_candidate(html, selectors)
 
         if text:
             return text
@@ -1090,20 +1012,23 @@ class WTRLabAdapter(SiteAdapter):
 
             for el in candidates:
                 paragraphs = [p.text(strip=True) for p in el.css("p")]
-                joined = "\n\n".join(p for p in paragraphs if p)
+                joined = self._clean_chapter_text("\n\n".join(p for p in paragraphs if p))
 
                 if len(joined) > best_len:
                     best_text = joined
                     best_len = len(joined)
 
-            if best_text:
+            if len(best_text) >= 200:
                 return best_text
 
-        return (
+        return self._clean_chapter_text(
             parse_text(
                 html,
                 [
+                    ".chapter-body .wtr-line.pr-line-text",
+                    ".chapter-body",
                     ".chapter-content",
+                    ".tiptap-content",
                     ".story-part",
                     "article",
                     "main",
@@ -1112,6 +1037,59 @@ class WTRLabAdapter(SiteAdapter):
             or ""
         )
 
+    def _best_chapter_candidate(self, html: str, selectors: List[str]) -> str:
+        """Choose the largest meaningful WTR content block, not the first review."""
+        candidates: List[str] = []
+
+        if _SELECTOLAX_AVAILABLE:
+            tree = HTMLParser(html)
+            for selector in selectors:
+                try:
+                    nodes = tree.css(selector)
+                except Exception:
+                    continue
+                for node in nodes:
+                    lines = node.css(".wtr-line.pr-line-text")
+                    if lines:
+                        raw = "\n\n".join(line.text(strip=True) for line in lines)
+                    else:
+                        paragraphs = [p.text(strip=True) for p in node.css("p")]
+                        raw = "\n\n".join(p for p in paragraphs if p) or node.text(strip=True)
+                    cleaned = self._clean_chapter_text(raw)
+                    if cleaned:
+                        candidates.append(cleaned)
+        elif _BS4_AVAILABLE:
+            soup = BeautifulSoup(html, "html.parser")
+            for selector in selectors:
+                try:
+                    nodes = soup.select(selector)
+                except Exception:
+                    continue
+                for node in nodes:
+                    lines = node.select(".wtr-line.pr-line-text")
+                    if lines:
+                        raw = "\n\n".join(line.get_text(" ", strip=True) for line in lines)
+                    else:
+                        paragraphs = [p.get_text(" ", strip=True) for p in node.find_all("p")]
+                        raw = "\n\n".join(p for p in paragraphs if p) or node.get_text(" ", strip=True)
+                    cleaned = self._clean_chapter_text(raw)
+                    if cleaned:
+                        candidates.append(cleaned)
+
+        return max(candidates, key=len, default="")
+
+    def _clean_chapter_text(self, text: str) -> str:
+        """Remove WTR-Lab shell text before translation."""
+        lines = []
+        for line in (text or "").splitlines():
+            normalized = re.sub(r"\s+", " ", line).strip()
+            if normalized and normalized.casefold() not in {
+                noise.casefold() for noise in _WTR_NOISE_LINES
+            }:
+                lines.append(normalized)
+
+        return "\n\n".join(lines)
+
     async def _fetch_rendered_chapter_html(
         self,
         chapter_url: str,
@@ -1119,32 +1097,25 @@ class WTRLabAdapter(SiteAdapter):
         expected_chapter: Optional[int],
     ) -> str:
         """Load a chapter and reject silent redirects to another novel."""
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(headless=True)
-            try:
-                page = await browser.new_page()
-                await page.goto(chapter_url, wait_until="networkidle")
+        html = await fetch_html_nodriver(
+            chapter_url,
+            wait_selector=(
+                ".chapter-body, .tiptap-content, .chapter-content, .story-part, "
+                "#chapter-container, article, main"
+            ),
+            timeout=120,
+        )
 
-                actual_novel_id = _novel_id_from_url(page.url)
-                actual_chapter = _chapter_number(page.url)
-                if expected_novel_id and actual_novel_id != expected_novel_id:
-                    raise RuntimeError(
-                        f"WTR-Lab redirected chapter to another novel: "
-                        f"expected {expected_novel_id}, got {actual_novel_id}"
-                    )
-                if expected_chapter and actual_chapter != expected_chapter:
-                    raise RuntimeError(
-                        f"WTR-Lab redirected to another chapter: "
-                        f"expected {expected_chapter}, got {actual_chapter}"
-                    )
-
-                try:
-                    await page.wait_for_selector(
-                        ".chapter-content, .story-part, #chapter-container, article",
-                        timeout=15_000,
-                    )
-                except Exception:
-                    pass
-                return await page.content()
-            finally:
-                await browser.close()
+        actual_novel_id = _novel_id_from_url(chapter_url)
+        actual_chapter = _chapter_number(chapter_url)
+        if expected_novel_id and actual_novel_id != expected_novel_id:
+            raise RuntimeError(
+                f"WTR-Lab redirected chapter to another novel: "
+                f"expected {expected_novel_id}, got {actual_novel_id}"
+            )
+        if expected_chapter and actual_chapter != expected_chapter:
+            raise RuntimeError(
+                f"WTR-Lab redirected to another chapter: "
+                f"expected {expected_chapter}, got {actual_chapter}"
+            )
+        return html

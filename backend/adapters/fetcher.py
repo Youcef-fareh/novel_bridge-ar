@@ -149,7 +149,12 @@ def _get_nodriver_lock() -> asyncio.Lock:
     return lock
 
 
-async def fetch_html_nodriver(url: str, wait_selector: str = "", timeout: int = 45) -> str:
+async def fetch_html_nodriver(
+    url: str,
+    wait_selector: str = "",
+    timeout: int = 45,
+    click_selector: str = "",
+) -> str:
     """Fetch a page using nodriver (undetected Chrome) to bypass Cloudflare.
 
     **Runs nodriver in a fully isolated subprocess** so that Chrome's window
@@ -167,6 +172,9 @@ async def fetch_html_nodriver(url: str, wait_selector: str = "", timeout: int = 
         url: The page URL.
         wait_selector: CSS selector to wait for before capturing HTML.
         timeout: Maximum seconds to wait for the selector. Default 45 s.
+        click_selector: Optional selector for accordion triggers to click
+            after the page is ready. Only elements whose visible text matches
+            a chapter range are clicked.
 
     Raises:
         ImportError: if ``nodriver`` is not installed.
@@ -201,6 +209,7 @@ async def fetch_html_nodriver(url: str, wait_selector: str = "", timeout: int = 
                 wait_selector or "",
                 str(timeout),
                 tmp_path,
+                click_selector or "",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 **kwargs,
@@ -215,7 +224,7 @@ async def fetch_html_nodriver(url: str, wait_selector: str = "", timeout: int = 
                 raise RuntimeError("nodriver subprocess timed out")
 
             if proc.returncode != 0:
-                err = stderr_bytes.decode("utf-8", errors="replace")[:400]
+                err = stderr_bytes.decode("utf-8", errors="replace")[:2000]
                 raise RuntimeError(f"nodriver subprocess failed: {err}")
 
             html = Path(tmp_path).read_text(encoding="utf-8", errors="replace")
