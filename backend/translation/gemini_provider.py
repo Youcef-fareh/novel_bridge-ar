@@ -45,6 +45,55 @@ GEMINI_MODELS = [
 ]
 
 
+def _build_safety_settings(types):
+    categories = (
+        types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    )
+    return [
+        types.SafetySetting(
+            category=category,
+            threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        )
+        for category in categories
+    ]
+
+
+def _response_text(response) -> str:
+    try:
+        translated = response.text or ""
+    except (AttributeError, ValueError):
+        translated = ""
+    if translated.strip():
+        return translated.strip()
+
+    text_parts = []
+    candidates = getattr(response, "candidates", None) or []
+    for candidate in candidates:
+        content = getattr(candidate, "content", None)
+        for part in getattr(content, "parts", None) or []:
+            part_text = getattr(part, "text", None)
+            if part_text:
+                text_parts.append(part_text)
+    if text_parts:
+        return "".join(text_parts).strip()
+
+    details = []
+    prompt_feedback = getattr(response, "prompt_feedback", None)
+    block_reason = getattr(prompt_feedback, "block_reason", None)
+    if block_reason:
+        details.append(f"prompt block reason: {block_reason}")
+    for candidate in candidates:
+        finish_reason = getattr(candidate, "finish_reason", None)
+        if finish_reason:
+            details.append(f"finish reason: {finish_reason}")
+            break
+    suffix = f" ({'; '.join(details)})" if details else ""
+    raise RuntimeError(f"Gemini returned no text{suffix}.")
+
+
 class GeminiProvider(TranslationProvider):
     provider_name = "gemini"
 
@@ -96,11 +145,9 @@ class GeminiProvider(TranslationProvider):
             contents=text,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
+                safety_settings=_build_safety_settings(types),
             ),
         )
-        translated = response.text.strip() if response.text else ""
-        if not translated:
-            raise RuntimeError("Gemini returned an empty response.")
-        return translated
+        return _response_text(response)
 
 
