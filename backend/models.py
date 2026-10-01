@@ -3,7 +3,7 @@ NovelBridge — SQLite data models.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -53,8 +53,8 @@ class Novel(SQLModel, table=True):
     cover_url:   Optional[str] = None
     description: Optional[str] = None
     status:      NovelStatus   = Field(default=NovelStatus.pending)
-    created_at:  datetime      = Field(default_factory=datetime.utcnow)
-    updated_at:  datetime      = Field(default_factory=datetime.utcnow)
+    created_at:  datetime      = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at:  datetime      = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Chapter(SQLModel, table=True):
@@ -66,7 +66,7 @@ class Chapter(SQLModel, table=True):
     raw_text:        Optional[str]    = None
     translated_text: Optional[str]   = None
     status:          ChapterStatus    = Field(default=ChapterStatus.pending)
-    updated_at:      datetime         = Field(default_factory=datetime.utcnow)
+    updated_at:      datetime         = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class GlossaryRule(SQLModel, table=True):
@@ -86,5 +86,5 @@ class Job(SQLModel, table=True):
     total_items:   int           = Field(default=0)
     done_items:    int           = Field(default=0)
     error_message: Optional[str] = None
-    created_at:    datetime      = Field(default_factory=datetime.utcnow)
-    updated_at:    datetime      = Field(default_factory=datetime.utcnow)
+    created_at:    datetime      = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at:    datetime      = Field(default_factory=lambda: datetime.now(timezone.utc))

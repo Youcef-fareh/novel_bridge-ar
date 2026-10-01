@@ -46,16 +46,22 @@ GEMINI_MODELS = [
 
 
 def _build_safety_settings(types):
+    harm_category = getattr(types, "HarmCategory", None)
+    block_threshold = getattr(types, "HarmBlockThreshold", None)
+    safety_setting = getattr(types, "SafetySetting", None)
+    if harm_category is None or block_threshold is None or safety_setting is None:
+        return []
+
     categories = (
-        types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-        types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        harm_category.HARM_CATEGORY_HARASSMENT,
+        harm_category.HARM_CATEGORY_HATE_SPEECH,
+        harm_category.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        harm_category.HARM_CATEGORY_DANGEROUS_CONTENT,
     )
     return [
-        types.SafetySetting(
+        safety_setting(
             category=category,
-            threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            threshold=block_threshold.BLOCK_ONLY_HIGH,
         )
         for category in categories
     ]

@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator, List, Optional
 
@@ -120,7 +120,7 @@ def update_novel(novel_id: int, **kwargs) -> Optional[Novel]:
             return None
         for k, v in kwargs.items():
             setattr(novel, k, v)
-        novel.updated_at = datetime.utcnow()
+        novel.updated_at = datetime.now(timezone.utc)
         session.add(novel)
         session.commit()
         session.refresh(novel)
@@ -172,7 +172,7 @@ def update_chapter(chapter_id: int, **kwargs) -> Optional[Chapter]:
             return None
         for k, v in kwargs.items():
             setattr(chapter, k, v)
-        chapter.updated_at = datetime.utcnow()
+        chapter.updated_at = datetime.now(timezone.utc)
         session.add(chapter)
         session.commit()
         session.refresh(chapter)
@@ -187,7 +187,7 @@ def recover_interrupted_translations() -> int:
         ).all())
         for chapter in chapters:
             chapter.status = ChapterStatus.scraped
-            chapter.updated_at = datetime.utcnow()
+            chapter.updated_at = datetime.now(timezone.utc)
             session.add(chapter)
         session.commit()
         return len(chapters)
@@ -256,7 +256,7 @@ def update_job(job_id: int, **kwargs) -> Optional[Job]:
             return None
         for k, v in kwargs.items():
             setattr(job, k, v)
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(timezone.utc)
         session.add(job)
         session.commit()
         session.refresh(job)
