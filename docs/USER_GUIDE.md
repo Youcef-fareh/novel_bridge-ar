@@ -22,6 +22,12 @@ python run_gui.py
 
 If activation is blocked, run `.venv\Scripts\python.exe run_gui.py` using the Python executable inside the environment. The first run creates the local database.
 
+### 1.1 Check for updates
+
+The installed Windows app checks for a stable release after startup. When an update is available, it shows the release notes and download size; nothing is installed unless you choose **Download and Install**. You can also check from **Help → Check for Updates**. The app uses a changed-files-only installer when your version has a matching incremental package, and falls back to the full installer otherwise. Downloads are checked against the release SHA-256 checksum. The app closes during installation and restarts afterward. Database files, EPUB output, and `.env` settings are not part of incremental updates.
+
+Updates are available for packaged Windows releases, not for runs from source.
+
 ### 2. Add an API key
 
 You need at least one provider. API keys are created on the provider's website, not inside Novel Bridge AR:
@@ -119,6 +125,12 @@ python run_gui.py
 ```
 
 إذا منع PowerShell تفعيل البيئة، شغّل `.venv\Scripts\python.exe run_gui.py` باستخدام Python الموجود داخل البيئة. ينشئ التشغيل الأول قاعدة البيانات المحلية.
+
+### 1.1 التحقق من التحديثات
+
+يتحقق إصدار Windows المثبّت من وجود إصدار مستقر جديد بعد التشغيل. عند توفر تحديث، يعرض التطبيق ملاحظات الإصدار وحجم التنزيل، ولا يثبته إلا بعد اختيار **Download and Install**. ويمكنك التحقق يدوياً من **Help → Check for Updates**. يستخدم التطبيق حزمة ملفات متغيرة فقط إذا توفرت حزمة مناسبة لإصدارك، وإلا يستخدم المثبّت الكامل. يتحقق التطبيق من SHA-256 قبل التثبيت، ثم يُغلق ويُعاد تشغيله. لا تشمل التحديثات قاعدة البيانات أو ملفات EPUB أو إعدادات `.env`.
+
+التحديثات متاحة لإصدارات Windows المثبّتة، وليست للتشغيل من المصدر.
 
 ### 2. إضافة مفتاح API
 

@@ -11,6 +11,7 @@ A Python-based app for fetching, translating, and packaging novels from supporte
 - Save all generated EPUBs to Google Drive
 - Manage glossary entries and novel metadata
 - Desktop GUI for managing novels and chapters
+- Opt-in Windows app updates with smaller incremental packages when available
 
 ## Project structure
 

@@ -26,6 +26,44 @@ def test_wuxiaspot_cover_extraction():
     assert adapter._extract_cover(html) == "https://www.wuxiaspot.com/covers/example.jpg"
 
 
+def test_easternwordsmith_extracts_public_chapters_in_order():
+        from backend.adapters.easternwordsmith import (
+                EasternWordsmithAdapter,
+                _extract_chapter_refs,
+                _extract_chapter_text,
+                _label_value,
+        )
+        from bs4 import BeautifulSoup
+        from backend.adapters.base import AdapterRegistry
+
+        novel_url = "https://easternwordsmith.com/novel/example"
+        html = """
+        <title>Example Novel</title>
+        <div class="row"><div class="col-4"><a>Author</a></div>
+            <div class="col-8"><a>Test Author</a></div></div>
+        <div class="row"><div class="col-4"><a>Description</a></div>
+            <div class="col-8"><p>Novel summary.</p></div></div>
+        <a href="../chapter/30">Chapter 3</a>
+        <a class="early-access-link" href="../chapter/40">Locked Chapter 4</a>
+        <a href="../chapter/10">Chapter 1</a>
+        <a href="../chapter/20">Chapter 2</a>
+        <section id="CS"><p>Story paragraph.</p>
+            <p>Second paragraph<ins>Ad content</ins>.</p></section>
+        """
+        refs = _extract_chapter_refs(html, novel_url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        adapter = EasternWordsmithAdapter()
+        AdapterRegistry.register(adapter)
+        assert AdapterRegistry.find(novel_url) is adapter
+        assert AdapterRegistry.find("https://www.easternwordsmith.com/novel/example") is adapter
+        assert [ref.title for ref in refs] == ["Chapter 1", "Chapter 2", "Chapter 3"]
+        assert refs[0].source_url == "https://easternwordsmith.com/chapter/10"
+        assert _label_value(soup, "Author") == "Test Author"
+        assert _label_value(soup, "Description") == "Novel summary."
+        assert _extract_chapter_text(html) == "Story paragraph.\n\nSecond paragraph."
+
+
 # ── Test: database init ────────────────────────────────────────────────────────
 def test_db_init(tmp_path, monkeypatch):
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))

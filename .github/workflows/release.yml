@@ -33,6 +33,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Resolve release version
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_REF: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $releaseTag = $env:INPUT_VERSION
+          } else {
+            $releaseTag = $env:TAG_REF
+          }
+          $appVersion = $releaseTag.TrimStart("v")
+          if ($appVersion -notmatch '^\d+\.\d+\.\d+([+-][0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version: $releaseTag"
+          }
+          Set-Content -Path VERSION -Value $appVersion -NoNewline -Encoding utf8
+          "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
+          "RELEASE_TAG=$releaseTag" >> $env:GITHUB_ENV
+
       # ── 2. Python setup ────────────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -93,6 +113,56 @@ jobs:
           Get-Item "dist\NovelBridgeAR\NovelBridgeAR.exe" | Select-Object Name, Length
         shell: pwsh
 
+      - name: Download previous portable release for delta build
+        id: previous
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const releases = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const currentVersion = (process.env.APP_VERSION || '').replace(/^v/, '');
+            const previous = releases.data
+              .filter(release => !release.draft && !release.prerelease)
+              .filter(release => release.tag_name.replace(/^v/, '') !== currentVersion)
+              .sort((left, right) => Date.parse(right.published_at) - Date.parse(left.published_at))
+              .find(release => release.assets.some(asset => asset.name === 'NovelBridgeAR_Portable.zip'));
+            if (!previous) {
+              core.notice('No prior portable release found; this release will use the full installer until a baseline is available.');
+              core.setOutput('found', 'false');
+              return;
+            }
+            const asset = previous.assets.find(item => item.name === 'NovelBridgeAR_Portable.zip');
+            const response = await fetch(asset.browser_download_url);
+            if (!response.ok) throw new Error(`Could not download prior release package: ${response.status}`);
+            const destination = path.join(process.env.RUNNER_TEMP, 'NovelBridgeAR_Previous.zip');
+            fs.writeFileSync(destination, Buffer.from(await response.arrayBuffer()));
+            core.setOutput('found', 'true');
+            core.setOutput('path', destination);
+
+      - name: Prepare portable archive and delta installer source
+        shell: pwsh
+        env:
+          PREVIOUS_FOUND: ${{ steps.previous.outputs.found }}
+          PREVIOUS_ARCHIVE: ${{ steps.previous.outputs.path }}
+        run: |
+          $arguments = @(
+            "scripts/create_update_package.py",
+            "--source", "dist/NovelBridgeAR",
+            "--portable-output", "installer/Output/NovelBridgeAR_Portable.zip",
+            "--update-build-dir", "installer/UpdateBuild"
+          )
+          if ($env:PREVIOUS_FOUND -eq "true") {
+            $previousRoot = Join-Path $env:RUNNER_TEMP "NovelBridgeAR_Previous"
+            Expand-Archive -LiteralPath $env:PREVIOUS_ARCHIVE -DestinationPath $previousRoot -Force
+            $arguments += @("--previous-dir", (Join-Path $previousRoot "NovelBridgeAR"))
+          }
+          python @arguments
+
       # ── 8. Install Inno Setup ──────────────────────────────────────────────
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
@@ -100,18 +170,37 @@ jobs:
       # ── 9. Compile installer ───────────────────────────────────────────────
       - name: Compile installer (Inno Setup)
         run: |
-          # Strip leading "v" so Inno Setup gets "1.0.0" not "v1.0.0"
-          $tag = "${{ github.ref_name }}"
-          if (-not $tag -or $tag -eq "refs/heads/main") {
-            $tag = "${{ github.event.inputs.version }}"
-          }
-          $version = $tag.TrimStart("v")
-          Write-Host "Building installer for version: $version (tag: $tag)"
+          Write-Host "Building installer for version: $env:APP_VERSION (tag: $env:RELEASE_TAG)"
 
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc "/DMyAppVersion=$version" "installer\setup.iss"
+          & $iscc "/DMyAppVersion=$env:APP_VERSION" "installer\setup.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         shell: pwsh
+
+      - name: Compile incremental update installer
+        shell: pwsh
+        run: |
+          $updateScript = "installer\UpdateBuild\update.iss"
+          if (Test-Path $updateScript) {
+            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+            & $iscc $updateScript
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host "No incremental package was generated; users will receive the full installer fallback."
+          }
+
+      - name: Write installer checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem "installer\Output" -Filter "*.exe" | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            $text = "$hash  $($_.Name)"
+            [System.IO.File]::WriteAllText(
+              "$($_.FullName).sha256",
+              $text,
+              [System.Text.UTF8Encoding]::new($false)
+            )
+          }
 
       # ── 10. Verify installer was produced ──────────────────────────────────
       - name: Verify installer output
@@ -131,26 +220,45 @@ jobs:
         if: always()
         with:
           name: NovelBridgeAR-installer
-          path: installer/Output/NovelBridgeAR_Setup.exe
+          path: installer/Output/*
           retention-days: 7
 
       # ── 12. Create/update GitHub Release and attach installer ───────────────
+      - name: Collect release assets
+        id: release-assets
+        shell: pwsh
+        run: |
+          $files = @(
+            "installer/Output/NovelBridgeAR_Setup.exe",
+            "installer/Output/NovelBridgeAR_Setup.exe.sha256",
+            "installer/Output/NovelBridgeAR_Portable.zip"
+          )
+          $files += Get-ChildItem "installer/Output" -Filter "NovelBridgeAR_Update_*.exe" |
+            ForEach-Object { $_.FullName.Replace("$PWD\", "").Replace("\", "/") }
+          $files += Get-ChildItem "installer/Output" -Filter "NovelBridgeAR_Update_*.exe.sha256" |
+            ForEach-Object { $_.FullName.Replace("$PWD\", "").Replace("\", "/") }
+          "files<<EOF" >> $env:GITHUB_OUTPUT
+          $files | ForEach-Object { $_ >> $env:GITHUB_OUTPUT }
+          "EOF" >> $env:GITHUB_OUTPUT
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || github.event.inputs.version }}
-          name: "NovelBridge AR ${{ github.ref_name || github.event.inputs.version }}"
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "NovelBridge AR ${{ env.RELEASE_TAG }}"
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') || contains(github.event.inputs.version, '-') }}
-          files: installer/Output/NovelBridgeAR_Setup.exe
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          files: ${{ steps.release-assets.outputs.files }}
           body: |
-            ## NovelBridge AR ${{ github.ref_name || github.event.inputs.version }}
+            ## NovelBridge AR ${{ env.RELEASE_TAG }}
 
             ### 📥 Installation
             1. Download **NovelBridgeAR_Setup.exe** below
             2. Run the installer and follow the wizard
             3. Launch **NovelBridge AR** from the Start Menu or Desktop shortcut
 
+            Existing installations receive a smaller incremental update when one is available. The full installer remains available as a fallback.
+
             ### 📋 What's new
-            See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes in this release.
+            See the [commit history](https://github.com/${{ github.repository }}/commits/${{ env.RELEASE_TAG }}) for changes in this release.
 

@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.adapters.base import AdapterRegistry
+from backend.adapters.easternwordsmith import EasternWordsmithAdapter
 from backend.adapters.galaxynovels import GalaxyNovelsAdapter
 from backend.adapters.lightnovelpub import LightNovelPubAdapter
 from backend.adapters.novelfire import NovelFireAdapter
@@ -54,6 +55,7 @@ app.add_middleware(
 async def startup():
     init_db()
     # Register site adapters
+    AdapterRegistry.register(EasternWordsmithAdapter())
     AdapterRegistry.register(NovelFireAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import (
-    QObject, QRunnable, QSettings, Qt, QThread, QThreadPool, QUrl,
+    QObject, QRunnable, QSettings, Qt, QThread, QThreadPool, QTimer, QUrl,
     pyqtSignal, pyqtSlot,
 )
 from PyQt6.QtGui import QAction, QFont, QGuiApplication, QIcon, QPixmap
@@ -21,12 +21,13 @@ from PyQt6.QtWidgets import (
     QApplication, QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
     QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton, QSplitter,
-    QSpinBox, QStatusBar, QTabWidget, QVBoxLayout, QWidget,
+    QProgressDialog, QSpinBox, QStatusBar, QTabWidget, QVBoxLayout, QWidget,
 )
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from backend.adapters.base import AdapterRegistry
+from backend.adapters.easternwordsmith import EasternWordsmithAdapter
 from backend.adapters.galaxynovels import GalaxyNovelsAdapter
 from backend.adapters.lightnovelpub import LightNovelPubAdapter
 from backend.adapters.novelfire import NovelFireAdapter
@@ -46,6 +47,12 @@ from backend.translation import (
     PROVIDER_DISPLAY_NAMES,
     PROVIDER_MODELS,
     ProviderFailureError,
+)
+from backend.update_manager import (
+    UpdatePlan,
+    check_for_update,
+    download_update_asset,
+    read_installed_version,
 )
 from gui.widgets.api_keys import ProviderSettingsWidget
 from gui.widgets.chapter_table import ChapterTableWidget
@@ -90,6 +97,37 @@ class AsyncWorker(QRunnable):
             self.signals.error.emit(str(e))
         finally:
             loop.close()
+
+
+class _UpdateWorkerSignals(QObject):
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+
+class _UpdateCheckWorker(QRunnable):
+    def __init__(self):
+        super().__init__()
+        self.signals = _UpdateWorkerSignals()
+
+    def run(self):
+        try:
+            self.signals.completed.emit(check_for_update(read_installed_version()))
+        except Exception as exc:
+            self.signals.failed.emit(str(exc))
+
+
+class _UpdateDownloadWorker(QRunnable):
+    def __init__(self, plan: UpdatePlan, destination: Path):
+        super().__init__()
+        self.plan = plan
+        self.destination = destination
+        self.signals = _UpdateWorkerSignals()
+
+    def run(self):
+        try:
+            self.signals.completed.emit(download_update_asset(self.plan, self.destination))
+        except Exception as exc:
+            self.signals.failed.emit(str(exc))
 
 
 # ── Add Novel Dialog ───────────────────────────────────────────────────────────
@@ -1295,6 +1333,7 @@ def load_stylesheet() -> str:
 def run_app() -> None:
     # Initialise database + register adapters before Qt starts
     init_db()
+    AdapterRegistry.register(EasternWordsmithAdapter())
     AdapterRegistry.register(NovelFireAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
@@ -1333,6 +1372,8 @@ class HtmlMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._update_check_worker = None
+        self._update_download_worker = None
         self.setWindowTitle("NovelBridge — Arabic Web Novel Translator")
         self.setMinimumSize(1100, 700)
         self.resize(1280, 780)
@@ -1348,7 +1389,110 @@ class HtmlMainWindow(QMainWindow):
         html_path = Path(__file__).parent.parent / "NovelBridge_fixed.html"
         self._view.setUrl(QUrl.fromLocalFile(str(html_path.resolve())))
 
+        help_menu = self.menuBar().addMenu("Help")
+        check_updates_action = QAction("Check for Updates…", self)
+        check_updates_action.triggered.connect(lambda: self._check_for_updates(manual=True))
+        help_menu.addAction(check_updates_action)
+
+        if getattr(sys, "frozen", False):
+            QTimer.singleShot(2500, lambda: self._check_for_updates(manual=False))
+
     def _apply_icon(self) -> None:
         icon_path = Path(__file__).parent.parent / "icon.ico"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
+
+    def _check_for_updates(self, manual: bool = False) -> None:
+        if not getattr(sys, "frozen", False):
+            if manual:
+                QMessageBox.information(
+                    self,
+                    "Updates",
+                    "Automatic updates are available in the installed Windows app.",
+                )
+            return
+        if self._update_check_worker is not None:
+            return
+
+        worker = _UpdateCheckWorker()
+        worker.signals.completed.connect(
+            lambda plan: self._on_update_check_completed(plan, manual)
+        )
+        worker.signals.failed.connect(
+            lambda error: self._on_update_check_failed(error, manual)
+        )
+        self._update_check_worker = worker
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_update_check_completed(self, plan: Optional[UpdatePlan], manual: bool) -> None:
+        self._update_check_worker = None
+        if plan is None:
+            if manual:
+                QMessageBox.information(self, "Updates", "You are using the latest version.")
+            return
+
+        package_kind = "incremental update" if plan.is_incremental else "full installer"
+        size_mb = plan.size_bytes / (1024 * 1024)
+        notes = plan.release_notes[:2000] or "No release notes were provided."
+        message = QMessageBox(self)
+        message.setWindowTitle("Update Available")
+        message.setIcon(QMessageBox.Icon.Information)
+        message.setTextFormat(Qt.TextFormat.PlainText)
+        message.setText(
+            f"NovelBridge AR {plan.version} is available.\n"
+            f"Download: {size_mb:.1f} MB ({package_kind}).\n\n"
+            "Install this update now?"
+        )
+        message.setInformativeText(notes)
+        message.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        message.button(QMessageBox.StandardButton.Yes).setText("Download and Install")
+        message.button(QMessageBox.StandardButton.No).setText("Later")
+        if message.exec() == QMessageBox.StandardButton.Yes:
+            self._download_and_install_update(plan)
+
+    def _on_update_check_failed(self, error: str, manual: bool) -> None:
+        self._update_check_worker = None
+        if manual:
+            QMessageBox.warning(self, "Update Check Failed", error)
+
+    def _download_and_install_update(self, plan: UpdatePlan) -> None:
+        destination = Path(os.getenv("TEMP", Path.home())) / "NovelBridgeAR" / "updates"
+        self._update_progress = QProgressDialog(
+            "Downloading and verifying the update…", "", 0, 0, self
+        )
+        self._update_progress.setWindowTitle("NovelBridge AR Update")
+        self._update_progress.setCancelButton(None)
+        self._update_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._update_progress.show()
+        worker = _UpdateDownloadWorker(plan, destination)
+        worker.signals.completed.connect(self._launch_update_installer)
+        worker.signals.failed.connect(self._on_update_download_failed)
+        self._update_download_worker = worker
+        QThreadPool.globalInstance().start(worker)
+
+    def _launch_update_installer(self, installer_path: Path) -> None:
+        self._update_download_worker = None
+        self._update_progress.close()
+        try:
+            app_dir = Path(sys.executable).resolve().parent
+            command = [
+                str(installer_path),
+                "/VERYSILENT",
+                "/SUPPRESSMSGBOXES",
+                "/NORESTART",
+                f'/DIR="{app_dir}"',
+            ]
+            flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+                subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+            )
+            subprocess.Popen(command, close_fds=True, creationflags=flags)
+            QApplication.quit()
+        except Exception as exc:
+            QMessageBox.critical(self, "Update Failed", str(exc))
+
+    def _on_update_download_failed(self, error: str) -> None:
+        self._update_download_worker = None
+        self._update_progress.close()
+        QMessageBox.warning(self, "Update Download Failed", error)
