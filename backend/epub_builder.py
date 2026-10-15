@@ -5,9 +5,11 @@ Produces a valid RTL Arabic EPUB from translated chapters.
 from __future__ import annotations
 
 import io
+import mimetypes
 import os
 from pathlib import Path
 from typing import List, Optional
+from html import escape
 
 from ebooklib import epub
 
@@ -107,7 +109,7 @@ _CHAPTER_HTML_TEMPLATE = """<?xml version="1.0" encoding="utf-8"?>
 def _text_to_html_paragraphs(text: str) -> str:
     """Convert plain text (with blank-line paragraph breaks) to <p> tags."""
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-    return "\n".join(f"<p>{p.replace(chr(10), ' ')}</p>" for p in paragraphs)
+    return "\n".join(f"<p>{escape(p.replace(chr(10), ' '))}</p>" for p in paragraphs)
 
 
 def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path] = None) -> Path:
@@ -147,15 +149,18 @@ def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path]
             resp = httpx.get(novel.cover_url, timeout=10, follow_redirects=True)
             if resp.status_code == 200:
                 cover_data = resp.content
-                book.set_cover("images/cover.jpg", cover_data)
+                content_type = resp.headers.get("content-type", "").split(";", 1)[0].strip()
+                extension = mimetypes.guess_extension(content_type) if content_type.startswith("image/") else None
+                if extension:
+                    book.set_cover(f"images/cover{extension}", cover_data)
         except Exception:
             pass  # Cover is optional
 
     # ── Title/intro page ─────────────────────────────────────────────────────
-    author_block = f'<p class="author">المؤلف: {novel.author}</p>' if novel.author else ""
-    desc_block = f'<div class="description">{novel.description}</div>' if novel.description else ""
+    author_block = f'<p class="author">المؤلف: {escape(novel.author)}</p>' if novel.author else ""
+    desc_block = f'<div class="description">{escape(novel.description)}</div>' if novel.description else ""
     cover_content = _COVER_HTML_TEMPLATE.format(
-        title=novel.title,
+        title=escape(novel.title),
         author_block=author_block,
         desc_block=desc_block,
     )
@@ -189,7 +194,7 @@ def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path]
     for chapter, text in sorted(valid_chapters, key=lambda x: x[0].index):
         body_html = _text_to_html_paragraphs(text)
         chapter_content = _CHAPTER_HTML_TEMPLATE.format(
-            chapter_title=chapter.title,
+            chapter_title=escape(chapter.title),
             body=body_html,
         )
         epub_chapter = epub.EpubHtml(

@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
+import logging
 import os
 import random
 import sys
+import tempfile
+import threading
+import uuid
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 import subprocess
 import weakref
 
@@ -138,6 +143,36 @@ async def fetch_html_playwright(url: str, wait_for: str = "") -> str:
 
 
 _nodriver_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = weakref.WeakKeyDictionary()
+_nodriver_shutdown_requested = threading.Event()
+_nodriver_shutdown_file = (
+    Path(tempfile.gettempdir())
+    / f"novelbridge-nodriver-{os.getpid()}-{uuid.uuid4().hex}.stop"
+)
+
+
+def _cleanup_nodriver_shutdown_file() -> None:
+    try:
+        _nodriver_shutdown_file.unlink(missing_ok=True)
+    except OSError:
+        logging.getLogger(__name__).warning(
+            "Could not remove nodriver shutdown signal %s",
+            _nodriver_shutdown_file,
+            exc_info=True,
+        )
+
+
+atexit.register(_cleanup_nodriver_shutdown_file)
+
+
+def shutdown_nodriver_fetches() -> None:
+    """Stop active and queued nodriver subprocess fetches during app shutdown."""
+    _nodriver_shutdown_requested.set()
+    try:
+        _nodriver_shutdown_file.touch(exist_ok=True)
+    except OSError:
+        logging.getLogger(__name__).exception(
+            "Could not signal nodriver subprocesses to stop"
+        )
 
 
 def _get_nodriver_lock() -> asyncio.Lock:
@@ -191,6 +226,9 @@ async def fetch_html_nodriver(
             "nodriver is not installed. Run:  pip install nodriver"
         )
 
+    if _nodriver_shutdown_requested.is_set():
+        raise asyncio.CancelledError
+
     _script = Path(__file__).parent / "nodriver_fetch.py"
 
     fd, tmp_path = tempfile.mkstemp(suffix=".nodriver.html")
@@ -202,6 +240,8 @@ async def fetch_html_nodriver(
 
     async with _get_nodriver_lock():
         try:
+            if _nodriver_shutdown_requested.is_set():
+                raise asyncio.CancelledError
             proc = await asyncio.create_subprocess_exec(
                 sys.executable,
                 str(_script),
@@ -210,6 +250,7 @@ async def fetch_html_nodriver(
                 str(timeout),
                 tmp_path,
                 click_selector or "",
+                str(_nodriver_shutdown_file),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 **kwargs,
@@ -222,6 +263,9 @@ async def fetch_html_nodriver(
             except asyncio.TimeoutError:
                 proc.kill()
                 raise RuntimeError("nodriver subprocess timed out")
+
+            if _nodriver_shutdown_requested.is_set():
+                raise asyncio.CancelledError
 
             if proc.returncode != 0:
                 err = stderr_bytes.decode("utf-8", errors="replace")[:2000]
@@ -271,6 +315,131 @@ def parse_attr(html: str, css_selectors: list[str], attr: str) -> Optional[str]:
             node = soup.select_one(sel)
             if node and node.get(attr):
                 return node[attr]
+    return None
+
+
+def parse_cover_url(
+    html: str,
+    css_selectors: list[str],
+    base_url: str,
+) -> Optional[str]:
+    """Find a usable novel cover URL, including lazy-loaded image sources."""
+    lazy_attributes = (
+        "data-src",
+        "data-original",
+        "data-lazy-src",
+        "data-srcset",
+        "data-lazy-srcset",
+        "srcset",
+    )
+    placeholder_markers = (
+        "placeholder",
+        "no-image",
+        "no_image",
+        "nocover",
+        "no-cover",
+        "blank.gif",
+        "blank.png",
+        "transparent.gif",
+    )
+    selectors = list(dict.fromkeys([
+        *css_selectors,
+        ".book-img img",
+        ".novel-cover img",
+        ".cover img",
+        ".novel-info img",
+        ".book-cover img",
+        ".summary_image img",
+        ".wp-post-image",
+        'img[itemprop="image"]',
+    ]))
+
+    def normalize(value: str) -> Optional[str]:
+        candidate = value.strip().split(",", 1)[0].split()[0] if value.strip() else ""
+        if not candidate or candidate.lower().startswith(("data:", "blob:", "javascript:")):
+            return None
+        if any(marker in candidate.casefold() for marker in placeholder_markers):
+            return None
+        resolved = urljoin(base_url, candidate)
+        if urlparse(resolved).scheme not in {"http", "https"}:
+            return None
+        return resolved
+
+    if _SELECTOLAX_AVAILABLE:
+        tree = HTMLParser(html)
+        image_nodes = []
+        for selector in selectors:
+            for node in tree.css(selector):
+                if node.tag == "img":
+                    image_nodes.append(node)
+                else:
+                    image_nodes.extend(node.css("img"))
+
+        for attribute in lazy_attributes:
+            for node in image_nodes:
+                value = node.attributes.get(attribute, "")
+                if value:
+                    cover_url = normalize(value)
+                    if cover_url:
+                        return cover_url
+
+        for node in image_nodes:
+            value = node.attributes.get("src", "")
+            if value:
+                cover_url = normalize(value)
+                if cover_url:
+                    return cover_url
+
+        for selector in (
+            'meta[property="og:image"]',
+            'meta[property="og:image:url"]',
+            'meta[name="twitter:image"]',
+            'meta[name="twitter:image:src"]',
+        ):
+            for node in tree.css(selector):
+                value = node.attributes.get("content", "")
+                if value:
+                    cover_url = normalize(value)
+                    if cover_url:
+                        return cover_url
+    else:
+        soup = BeautifulSoup(html, "lxml")
+        image_nodes = []
+        for selector in selectors:
+            for node in soup.select(selector):
+                if node.name == "img":
+                    image_nodes.append(node)
+                else:
+                    image_nodes.extend(node.select("img"))
+
+        for attribute in lazy_attributes:
+            for node in image_nodes:
+                value = node.get(attribute, "")
+                if value:
+                    cover_url = normalize(value)
+                    if cover_url:
+                        return cover_url
+
+        for node in image_nodes:
+            value = node.get("src", "")
+            if value:
+                cover_url = normalize(value)
+                if cover_url:
+                    return cover_url
+
+        for selector in (
+            'meta[property="og:image"]',
+            'meta[property="og:image:url"]',
+            'meta[name="twitter:image"]',
+            'meta[name="twitter:image:src"]',
+        ):
+            for node in soup.select(selector):
+                value = node.get("content", "")
+                if value:
+                    cover_url = normalize(value)
+                    if cover_url:
+                        return cover_url
+
     return None
 
 

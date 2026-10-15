@@ -35,7 +35,8 @@ You need at least one provider. API keys are created on the provider's website, 
 | Provider | Create a key | Main settings |
 | --- | --- | --- |
 | Google Gemini | https://aistudio.google.com/app/apikey | `GEMINI_API_KEY`, `GEMINI_MODEL` |
-| Groq | https://console.groq.com | `GROQ_API_KEY`, `GROQ_MODEL` |
+| Groq | https://console.groq.com | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_BASE_URL` |
+| xAI Grok | https://console.x.ai | `XAI_API_KEY`, `GROK_MODEL`, `XAI_BASE_URL` |
 | TokenRouter | https://tokenrouter.com | `TOKENROUTER_API_KEY`, `TOKENROUTER_MODEL`, `TOKENROUTER_BASE_URL` |
 | OrcaRouter | https://orcarouter.ai | `ORCAROUTER_API_KEY`, `ORCAROUTER_MODEL`, `ORCAROUTER_BASE_URL` |
 
@@ -44,7 +45,7 @@ In the application:
 1. Open **API Keys**.
 2. Find a provider and click **Edit**.
 3. Paste the key into the API Key field. Never paste a key into a novel, glossary, or chat message.
-4. Confirm the model name and Base URL. For Gemini, use model `gemini-3.5-flash-lite`; the official SDK uses `https://generativelanguage.googleapis.com` internally, so do not add `GEMINI_BASE_URL` to `.env`. Base URL is configurable for OpenAI-compatible providers such as TokenRouter and OrcaRouter.
+4. Confirm the model name and Base URL. For Gemini, use model `gemini-3.5-flash-lite`; the official SDK uses `https://generativelanguage.googleapis.com` internally, so do not add `GEMINI_BASE_URL` to `.env`. Base URL is configurable for OpenAI-compatible providers such as TokenRouter, OrcaRouter, and xAI Grok.
 5. Click **Save All**. The provider should show **Connected**.
 6. Click **Test Provider** to confirm that a key is present. This checks configuration; a real translation also depends on quota, model availability, and the network.
 
@@ -62,11 +63,13 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 
 ### 3. Translate a novel
 
-1. In **Library**, paste a supported novel URL.
-2. Start the import/scrape operation and wait for the chapters to appear.
+1. In **Library**, click **Add Novel** and either paste a supported novel URL or choose **Import EPUB** and select an EPUB file.
+2. For a website novel, start scraping and wait for its chapters to appear. Scraping also loads the novel's cover into the Library when the site provides one. Imported EPUB chapters are added to the library ready to translate.
 3. Select the chapters to translate.
 4. Choose a provider and model, then start translation.
 5. Watch each chapter's status. Retry failed chapters before building the book.
+
+EPUB import reads chapter text and reading order from the book. The original file is left unchanged; the translated EPUB is rebuilt by Novel Bridge AR, so original images and formatting are not carried over. DRM-protected or invalid EPUB files cannot be imported.
 
 ### 4. Keep names consistent
 
@@ -99,6 +102,7 @@ The app requests only the `drive.file` permission, which allows it to create and
 | Rate limit, quota, or 429 | Wait, reduce the number of jobs, check provider billing/quota, or use another configured provider. |
 | Model not found or bad request | Check the exact model name and Base URL. Remove old model entries and add the current provider model. |
 | Scrape/import fails | Confirm the URL is supported and opens in a browser. Retry later if the site is unavailable. Site selectors are in `config/sites.json`; do not bypass access controls. |
+| A scraping browser remains open or the app is closed during scraping | Closing the app cancels nodriver scraping and signals its temporary Chrome window to close. Chapters completed before closing remain saved. |
 | Application does not start | Activate `.venv`, reinstall with `python -m pip install -r requirements.txt`, install the browser with `python -m playwright install`, then run `python run_gui.py`. |
 | EPUB is missing chapters | Check chapter statuses, retry failed chapters, and build the EPUB again. |
 | Google Drive OAuth file not found | Download a Desktop OAuth client JSON, place it at `config/google_client_secret.json`, or configure `GOOGLE_DRIVE_CREDENTIALS_FILE`. |
@@ -159,11 +163,13 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 
 ### 3. ترجمة رواية
 
-1. من تبويب **Library** الصق رابط رواية مدعوم.
-2. شغّل الاستيراد/الجلب وانتظر ظهور الفصول.
+1. من تبويب **Library** اضغط **Add Novel**، ثم الصق رابط موقع مدعوم أو اختر **Import EPUB** وحدد ملف EPUB.
+2. للرواية من موقع، ابدأ جلب الفصول وانتظر ظهورها. يجلب التطبيق غلاف الرواية إلى المكتبة إذا كان الموقع يوفره. تُضاف فصول EPUB المستوردة إلى المكتبة لتكون جاهزة للترجمة.
 3. اختر الفصول التي تريد ترجمتها.
 4. اختر المزود والنموذج ثم ابدأ الترجمة.
 5. راقب حالة كل فصل، وأعد محاولة الفصول الفاشلة قبل إنشاء الكتاب.
+
+يقرأ استيراد EPUB نص الفصول وترتيبها من الكتاب. لا يغيّر الملف الأصلي؛ يعيد Novel Bridge AR إنشاء ملف EPUB المترجم، لذلك لا يحتفظ بتنسيق الكتاب الأصلي أو صوره. لا يمكن استيراد ملفات EPUB المحمية بـ DRM أو التالفة.
 
 ### 4. تثبيت ترجمة الأسماء والمصطلحات
 
@@ -180,6 +186,7 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 - **تجاوز الحصة أو 429:** انتظر، خفّض عدد المهام المتزامنة، تحقق من حصة المزود، أو استخدم مزوداً آخر.
 - **النموذج غير موجود:** راجع اسم النموذج وBase URL حرفياً، واحذف النماذج القديمة وأضف الاسم الحالي.
 - **فشل جلب الموقع:** تأكد أن الرابط مدعوم ويفتح في المتصفح، ثم أعد المحاولة لاحقاً. لا تتجاوز أنظمة الحماية أو شروط الموقع.
+- **بقاء نافذة المتصفح بعد الإغلاق:** يؤدي إغلاق التطبيق إلى إلغاء جلب nodriver وإرسال إشارة لإغلاق نافذة Chrome المؤقتة. تبقى الفصول التي اكتمل جلبها محفوظة.
 - **التطبيق لا يفتح:** فعّل `.venv`، وثبّت المتطلبات، وثبّت Playwright، ثم شغّل `python run_gui.py` كما في قسم التثبيت.
 - **فصول ناقصة في EPUB:** راجع حالات الفصول، أعد ترجمة الفاشل، ثم أنشئ EPUB مرة أخرى.
 

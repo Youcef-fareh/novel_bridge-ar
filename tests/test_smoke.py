@@ -26,6 +26,52 @@ def test_wuxiaspot_cover_extraction():
     assert adapter._extract_cover(html) == "https://www.wuxiaspot.com/covers/example.jpg"
 
 
+@pytest.mark.parametrize(
+    ("module_name", "adapter_name", "novel_url", "html", "expected_cover"),
+    [
+        (
+            "backend.adapters.novelfire",
+            "NovelFireAdapter",
+            "https://novelfire.net/book/example",
+            '<div class="book-img"><img src="/images/placeholder.jpg" '
+            'data-src="//cdn.novelfire.net/covers/example.jpg"></div>',
+            "https://cdn.novelfire.net/covers/example.jpg",
+        ),
+        (
+            "backend.adapters.novelphoenix",
+            "NovelPhoenixAdapter",
+            "https://novelphoenix.net/novel/example",
+            '<div class="cover"><img src="data:image/gif;base64,R0lGODlh" '
+            'data-original="/covers/example.jpg"></div>',
+            "https://novelphoenix.net/covers/example.jpg",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_novel_adapters_extract_lazy_cover_images(
+    monkeypatch, module_name, adapter_name, novel_url, html, expected_cover
+):
+    import importlib
+
+    module = importlib.import_module(module_name)
+    monkeypatch.setattr(module, "fetch_html", AsyncMock(return_value=html))
+    metadata = await getattr(module, adapter_name)().get_novel_metadata(novel_url)
+
+    assert metadata.cover_url == expected_cover
+
+
+def test_cover_extraction_falls_back_to_open_graph_image():
+    from backend.adapters.fetcher import parse_cover_url
+
+    html = (
+        '<meta property="og:image" content="//cdn.example.com/cover.jpg">'
+        '<div class="cover"><img src="/images/placeholder.jpg"></div>'
+    )
+    assert parse_cover_url(html, [".cover img"], "https://novelphoenix.com/novel/book") == (
+        "https://cdn.example.com/cover.jpg"
+    )
+
+
 def test_easternwordsmith_extracts_public_chapters_in_order():
         from backend.adapters.easternwordsmith import (
                 EasternWordsmithAdapter,
@@ -96,6 +142,38 @@ def test_interrupted_translation_is_retryable(tmp_path, monkeypatch):
     recovered = db_module.get_chapters(novel.id)[0]
     assert recovered.status == ChapterStatus.scraped
     assert recovered.raw_text == "Source text"
+
+
+def test_gemini_uses_relaxed_safety_and_candidate_text():
+    from types import SimpleNamespace
+    from backend.translation.gemini_provider import _build_safety_settings, _response_text
+
+    class FakeSafetySetting:
+        def __init__(self, **kwargs):
+            self.values = kwargs
+
+    fake_types = SimpleNamespace(
+        HarmCategory=SimpleNamespace(
+            HARM_CATEGORY_HARASSMENT="harassment",
+            HARM_CATEGORY_HATE_SPEECH="hate_speech",
+            HARM_CATEGORY_SEXUALLY_EXPLICIT="sexually_explicit",
+            HARM_CATEGORY_DANGEROUS_CONTENT="dangerous_content",
+        ),
+        HarmBlockThreshold=SimpleNamespace(BLOCK_ONLY_HIGH="block_only_high"),
+        SafetySetting=FakeSafetySetting,
+    )
+    settings = _build_safety_settings(fake_types)
+    assert len(settings) == 4
+    assert all(setting.values["threshold"] == "block_only_high" for setting in settings)
+
+    response = SimpleNamespace(
+        text="",
+        candidates=[SimpleNamespace(
+            content=SimpleNamespace(parts=[SimpleNamespace(text="Translated chapter")]),
+            finish_reason=None,
+        )],
+    )
+    assert _response_text(response) == "Translated chapter"
 
 
 # ── Test: adapter registry ─────────────────────────────────────────────────────
@@ -326,6 +404,106 @@ def test_lightnovelpub_numbered_chapter_pages():
 
 
 @pytest.mark.asyncio
+async def test_nodriver_starts_with_no_sandbox(monkeypatch, tmp_path):
+    import asyncio
+    import sys
+    import types
+
+    import backend.adapters.nodriver_fetch as nodriver_fetch
+
+    captured = {}
+    real_sleep = asyncio.sleep
+
+    class FakeTab:
+        async def evaluate(self, *args, **kwargs):
+            return "unusual reading activity" not in args[0]
+
+        async def get_content(self):
+            if captured.get("delay_content"):
+                await real_sleep(0.1)
+            return "<html><body><h1>Chapter</h1></body></html>"
+
+    class FakeProcess:
+        wait_timeout = None
+
+        def wait(self, timeout=None):
+            self.wait_timeout = timeout
+            return 0
+
+    class FakeBrowser:
+        def __init__(self):
+            self._process = FakeProcess()
+            self.stopped = False
+
+        async def get(self, url):
+            return FakeTab()
+
+        def stop(self):
+            self.stopped = True
+
+    async def fake_start(**kwargs):
+        captured.update(kwargs)
+        captured["browser"] = FakeBrowser()
+        return captured["browser"]
+
+    monkeypatch.setitem(sys.modules, "nodriver", types.SimpleNamespace(start=fake_start))
+    sleeps = []
+
+    async def fake_sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr(nodriver_fetch.asyncio, "sleep", fake_sleep)
+
+    await nodriver_fetch._run(
+        "https://example.com",
+        "h1",
+        10,
+        str(tmp_path / "chapter.html"),
+        "",
+    )
+
+    assert captured["headless"] is False
+    assert captured["sandbox"] is False
+    assert captured["no_sandbox"] is True
+    assert captured["browser"].stopped
+    assert captured["browser"]._process.wait_timeout == 5
+    assert 5 not in sleeps
+
+    shutdown_signal = tmp_path / "stop-nodriver"
+    shutdown_signal.touch()
+    shutdown_output = tmp_path / "cancelled-chapter.html"
+    captured["delay_content"] = True
+    await nodriver_fetch._run_with_shutdown_signal(
+        "https://example.com",
+        "h1",
+        10,
+        str(shutdown_output),
+        "",
+        str(shutdown_signal),
+    )
+
+    assert captured["browser"].stopped
+    assert not shutdown_output.exists()
+
+
+def test_novellive_and_wtrlab_urls_are_case_insensitive():
+    from backend.adapters.base import AdapterRegistry
+    from backend.adapters.lightnovelpub import LightNovelPubAdapter
+    from backend.adapters.wtrlab import WTRLabAdapter
+
+    lnp = LightNovelPubAdapter()
+    wtr = WTRLabAdapter()
+    AdapterRegistry.register(lnp)
+    AdapterRegistry.register(wtr)
+
+    assert lnp.can_handle("https://NOVELLIVE.APP/book/weakest-beast-tamer-gets-all-sss-dragons/chapter-1-1-beast-tamer-ren-patinder")
+    assert AdapterRegistry.find("https://NOVELLIVE.APP/book/weakest-beast-tamer-gets-all-sss-dragons/chapter-1-1-beast-tamer-ren-patinder") is lnp
+
+    assert wtr.can_handle("https://WTR-LAB.com/en/novel/8937/multifunctional-sword-cultivation-starts-from-taxi?tab=toc")
+    assert AdapterRegistry.find("https://WTR-LAB.com/en/novel/8937/multifunctional-sword-cultivation-starts-from-taxi?tab=toc") is wtr
+
+
+@pytest.mark.asyncio
 async def test_native_arabic_novel_cannot_be_queued_for_translation(monkeypatch):
     import backend.pipeline as pipeline_module
     from backend.adapters.galaxynovels import GalaxyNovelsAdapter
@@ -392,6 +570,114 @@ def test_epub_builder(tmp_path):
     assert output.exists()
     assert output.suffix == ".epub"
     assert output.stat().st_size > 100
+
+
+def test_epub_builder_escapes_plain_text(tmp_path):
+    from xml.etree import ElementTree
+    from zipfile import ZipFile
+    from backend.models import Chapter, ChapterStatus, Novel, NovelStatus
+    from backend.epub_builder import build_epub
+
+    novel = Novel(
+        id=8, title="A & B <Novel>", author="Author & Co",
+        description="Description with <angle brackets> & ampersands",
+        source_url="https://example.com", source_site="novelfire",
+        status=NovelStatus.scraped,
+    )
+    chapter = Chapter(
+        id=8, novel_id=8, index=0, title="Chapter & <1>",
+        source_url="https://example.com/chapter-1",
+        translated_text="Text with <angle brackets> & ampersands.",
+        status=ChapterStatus.translated,
+    )
+
+    output = build_epub(novel, [chapter], output_dir=tmp_path)
+
+    with ZipFile(output) as archive:
+        chapter_root = ElementTree.fromstring(archive.read("EPUB/text/chapter_0000.xhtml"))
+        cover_root = ElementTree.fromstring(archive.read("EPUB/text/cover.xhtml"))
+
+    namespace = {"x": "http://www.w3.org/1999/xhtml"}
+    assert chapter_root.findtext(".//x:h2", namespaces=namespace) == chapter.title
+    assert chapter_root.findtext(".//x:p", namespaces=namespace) == chapter.translated_text
+    assert cover_root.findtext(".//x:h1", namespaces=namespace) == novel.title
+    assert cover_root.findtext(".//x:p[@class='author']", namespaces=namespace) == "المؤلف: Author & Co"
+    assert cover_root.findtext(".//x:div[@class='description']", namespaces=namespace) == novel.description
+
+
+def test_epub_builder_preserves_cover_image_type(tmp_path, monkeypatch):
+    from zipfile import ZipFile
+    from backend.models import Novel, NovelStatus
+    from backend.epub_builder import build_epub
+
+    class FakeResponse:
+        status_code = 200
+        content = b"\x89PNG\r\n\x1a\nfake image data"
+        headers = {"content-type": "image/png"}
+
+    monkeypatch.setattr("httpx.get", lambda *args, **kwargs: FakeResponse())
+    novel = Novel(
+        id=9, title="Cover type test", source_url="https://example.com",
+        source_site="novelfire", status=NovelStatus.scraped,
+        cover_url="https://example.com/cover.png",
+    )
+
+    output = build_epub(novel, [], output_dir=tmp_path)
+
+    with ZipFile(output) as archive:
+        assert "EPUB/images/cover.png" in archive.namelist()
+        opf_path = next(name for name in archive.namelist() if name.endswith(".opf"))
+        assert 'media-type="image/png"' in archive.read(opf_path).decode("utf-8")
+
+
+def test_epub_import_creates_translatable_chapters(tmp_path, monkeypatch):
+    from ebooklib import epub
+    import importlib
+
+    source = tmp_path / "Example Novel.epub"
+    book = epub.EpubBook()
+    book.set_identifier("test-novel")
+    book.set_title("Example Novel")
+    book.set_language("en")
+    book.add_author("Test Author")
+
+    cover = epub.EpubHtml(title="Cover", file_name="cover.xhtml", lang="en")
+    cover.content = b"<html><body><img src='cover.jpg'></body></html>"
+    title_page = epub.EpubHtml(title="Title", file_name="title.xhtml", lang="en")
+    title_page.content = b"<html><body><p>Example Novel</p></body></html>"
+    chapter = epub.EpubHtml(title="Chapter 1", file_name="text/chapter-1.xhtml", lang="en")
+    chapter.content = (
+        b"<html><body><h1>Chapter 1: A Beginning</h1>"
+        b"<p>First source paragraph.</p><p>Second source paragraph.</p></body></html>"
+    )
+    for item in (cover, title_page, chapter):
+        book.add_item(item)
+    book.toc = [chapter]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", cover, title_page, chapter]
+    epub.write_epub(str(source), book)
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "library.db"))
+    import backend.database as database
+    database = importlib.reload(database)
+    database.init_db()
+
+    import backend.epub_importer as importer
+    importer = importlib.reload(importer)
+    from backend.models import ChapterStatus, NovelStatus
+
+    novel = importer.import_epub_file(source)
+    chapters = database.get_chapters(novel.id)
+
+    assert novel.title == "Example Novel"
+    assert novel.author == "Test Author"
+    assert novel.source_site == "epub_import"
+    assert novel.status == NovelStatus.scraped
+    assert len(chapters) == 1
+    assert chapters[0].title == "Chapter 1: A Beginning"
+    assert chapters[0].raw_text == "First source paragraph.\n\nSecond source paragraph."
+    assert chapters[0].status == ChapterStatus.scraped
 
 
 # ── Test: Native Arabic novel EPUB build without translation ─────────────────
@@ -564,6 +850,10 @@ def test_gemini_provider_uses_instance_key(monkeypatch):
         def __init__(self, **kwargs):
             self.kwargs = kwargs
 
+    class FakeSafetySetting:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
     class FakeResponse:
         text = "translated"
 
@@ -581,7 +871,17 @@ def test_gemini_provider_uses_instance_key(monkeypatch):
     fake_google = types.ModuleType("google")
     fake_genai = types.ModuleType("google.genai")
     fake_genai.Client = FakeClient
-    fake_genai.types = types.SimpleNamespace(GenerateContentConfig=FakeGenerateContentConfig)
+    fake_genai.types = types.SimpleNamespace(
+        GenerateContentConfig=FakeGenerateContentConfig,
+        SafetySetting=FakeSafetySetting,
+        HarmCategory=types.SimpleNamespace(
+            HARM_CATEGORY_HARASSMENT="harassment",
+            HARM_CATEGORY_HATE_SPEECH="hate_speech",
+            HARM_CATEGORY_SEXUALLY_EXPLICIT="sexually_explicit",
+            HARM_CATEGORY_DANGEROUS_CONTENT="dangerous_content",
+        ),
+        HarmBlockThreshold=types.SimpleNamespace(BLOCK_ONLY_HIGH="block_only_high"),
+    )
     fake_google.genai = fake_genai
 
     monkeypatch.setitem(sys.modules, "google", fake_google)
@@ -595,6 +895,149 @@ def test_gemini_provider_uses_instance_key(monkeypatch):
 
     assert result == "translated"
     assert captured["api_key"] == "fresh-key"
+
+
+def test_grok_provider(monkeypatch):
+    from backend.translation import GrokProvider, get_provider
+
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("GROK_API_KEY", raising=False)
+    assert not GrokProvider().is_available()
+
+    provider = GrokProvider(api_key="xai-test-key", model="grok-3-mini")
+    assert provider.is_available()
+    assert provider._base_url == "https://api.x.ai/v1"
+
+    monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+    selected = get_provider("grok", model="grok-3-mini")
+    assert selected.provider_name == "grok"
+    assert selected._model == "grok-3-mini"
+
+
+def test_groq_base_url_normalization():
+    from backend.translation import GroqProvider
+
+    assert GroqProvider._normalize_base_url("https://api.groq.com/openai/v1") == "https://api.groq.com"
+    assert GroqProvider._normalize_base_url("https://api.groq.com/openai/v1/") == "https://api.groq.com"
+    assert GroqProvider._normalize_base_url("https://proxy.example/v1") == "https://proxy.example/v1"
+
+
+def test_groq_response_text_extraction():
+    from backend.translation import GroqProvider
+
+    class Message:
+        content = "  translated chapter  "
+
+    class Choice:
+        message = Message()
+
+    class Response:
+        choices = [Choice()]
+
+    assert GroqProvider._response_text(Response()) == "translated chapter"
+
+
+def test_groq_stream_text_preserves_chunk_whitespace():
+    from backend.translation import GroqProvider
+
+    class FirstDelta:
+        content = "Hello"
+
+    class SecondDelta:
+        content = " world"
+
+    class FirstChunk:
+        choices = [type("Choice", (), {"delta": FirstDelta()})()]
+
+    class SecondChunk:
+        choices = [type("Choice", (), {"delta": SecondDelta()})()]
+
+    result = GroqProvider._stream_text(FirstChunk()) + GroqProvider._stream_text(SecondChunk())
+    assert result == "Hello world"
+
+
+def test_groq_gpt_oss_request_options(monkeypatch):
+    import sys
+    import types
+    from backend.translation import GroqProvider
+
+    captured = {}
+
+    class FakeDelta:
+        content = "translated"
+
+    class FakeChoice:
+        delta = FakeDelta()
+
+    class FakeChunk:
+        choices = [FakeChoice()]
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            captured.update(kwargs)
+            return [FakeChunk()]
+
+    class FakeClient:
+        chat = types.SimpleNamespace(completions=FakeCompletions())
+
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+
+    fake_groq = types.ModuleType("groq")
+    fake_groq.Groq = FakeClient
+    monkeypatch.setitem(sys.modules, "groq", fake_groq)
+
+    result = GroqProvider(api_key="test-key")._call_api("system", "text", "openai/gpt-oss-20b")
+
+    assert result == "translated"
+    assert captured["reasoning_effort"] == "medium"
+    assert captured["max_completion_tokens"] == 8192
+    assert captured["temperature"] == 1
+    assert captured["top_p"] == 1
+    assert captured["stop"] is None
+
+
+def test_groq_qwen_request_options():
+    from backend.translation import GroqProvider
+
+    options = GroqProvider._request_options("qwen/qwen3.8-27b", [{"role": "user", "content": "text"}])
+
+    assert options["reasoning_effort"] == "default"
+    assert options["max_completion_tokens"] == 8192
+    assert options["temperature"] == 0.6
+    assert options["top_p"] == 0.95
+    assert options["stop"] is None
+
+
+def test_groq_splits_long_chapters_at_paragraphs():
+    from backend.translation import GroqProvider
+
+    text = "A" * 3500 + "\n\n" + "B" * 3500
+    chunks = GroqProvider._split_text(text, max_chars=4000)
+
+    assert len(chunks) == 2
+    assert "A" * 3500 in chunks[0]
+    assert "B" * 3500 in chunks[1]
+
+
+@pytest.mark.asyncio
+async def test_gemini_sends_entire_chapter_in_one_request(monkeypatch):
+    from backend.translation import GeminiProvider
+
+    chapter = "paragraph one\n\n" + ("long chapter text " * 500)
+    captured = []
+    provider = GeminiProvider(api_key="test-gemini-key")
+
+    def fake_call(system_prompt, text, model):
+        captured.append(text)
+        return "translated"
+
+    monkeypatch.setattr(provider, "_call_api", fake_call)
+    result = await provider.translate_chapter(chapter, [], model="gemini-2.5-flash")
+
+    assert result == "translated"
+    assert captured == [chapter]
 
 
 @pytest.mark.asyncio
@@ -671,6 +1114,3 @@ async def test_orcarouter_translation_mock(monkeypatch):
     glossary = [GlossaryRule(source_term="test", target_term="تجريبي")]
     result = await op.translate_chapter("Test text.", glossary, model="orcarouter/free")
     assert "هذا نص أوركا المترجم." in result
-
-
-

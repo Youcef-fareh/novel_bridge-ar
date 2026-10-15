@@ -114,7 +114,25 @@ API_KEY_DEFS: List[tuple] = [
     (
         "GROQ_MODEL",
         "Groq Model",
-        "e.g. openai/gpt-oss-20b or qwen/qwen3.6-27b",
+        "e.g. openai/gpt-oss-20b or qwen/qwen3.8-27b",
+        False,
+    ),
+    (
+        "XAI_API_KEY",
+        "xAI Grok API Key",
+        "https://console.x.ai",
+        True,
+    ),
+    (
+        "GROK_MODEL",
+        "Grok Model",
+        "e.g. grok-3-mini or grok-3",
+        False,
+    ),
+    (
+        "XAI_BASE_URL",
+        "xAI Base URL",
+        "https://api.x.ai/v1",
         False,
     ),
 ]
@@ -509,7 +527,7 @@ _PROVIDER_GROUPS = (
     ("Gemini", "GEMINI", "GEMINI_API_KEY", "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"),
     ("TokenRouter", "TOKENROUTER", "TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1"),
     ("OrcaRouter", "ORCAROUTER", "ORCAROUTER_API_KEY", "ORCAROUTER_BASE_URL", "https://api.orcarouter.ai/v1"),
-    ("Groq", "GROQ", "GROQ_API_KEY", "GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+    ("Groq", "GROQ", "GROQ_API_KEY", "GROQ_BASE_URL", "https://api.groq.com"),
 )
 
 

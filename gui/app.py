@@ -1397,6 +1397,13 @@ class HtmlMainWindow(QMainWindow):
         if getattr(sys, "frozen", False):
             QTimer.singleShot(2500, lambda: self._check_for_updates(manual=False))
 
+    def closeEvent(self, event) -> None:
+        self._bridge.cancel_job()
+        from backend.adapters.fetcher import shutdown_nodriver_fetches
+
+        shutdown_nodriver_fetches()
+        super().closeEvent(event)
+
     def _apply_icon(self) -> None:
         icon_path = Path(__file__).parent.parent / "icon.ico"
         if icon_path.exists():

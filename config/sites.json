@@ -11,7 +11,7 @@
     "selectors": {
       "novel_title": "h1.novel-title, .book-name h1, .novel-info h1",
       "novel_author": ".author-content a, .novel-author .author-name",
-      "novel_cover": ".book-img img, .novel-cover img",
+      "novel_cover": ".book-img img, .novel-cover img, .book-cover img, .summary_image img, .wp-post-image, img[itemprop=\"image\"]",
       "novel_description": ".summary__content, .novel-description",
       "chapter_list": ".wp-manga-chapter a, .chapter-item a, #chapterlist li a",
       "chapter_title": ".chapter-title, h2.active, h1.chapter-title",
@@ -43,7 +43,7 @@
     "selectors": {
       "novel_title": "h1",
       "novel_author": ".author, .novel-info .author",
-      "novel_cover": ".cover img, .novel-info img",
+      "novel_cover": ".cover img, .novel-info img, .book-cover img, .summary_image img, .wp-post-image, img[itemprop=\"image\"]",
       "novel_description": ".summary, .description, .content",
       "chapter_list": ".chapter-list li a, .chapter-list a",
       "chapter_title": "h1, .chapter-title",

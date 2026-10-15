@@ -188,6 +188,8 @@ async def run_scrape_job(
                     if job_control:
                         await job_control.check()
                     text = await adapter.get_chapter_text(ref.source_url)
+                    if not text or not text.strip():
+                        raise ValueError("Scraper returned empty chapter text.")
                     update_chapter(chapter.id, raw_text=text, status=ChapterStatus.scraped)
                 except asyncio.CancelledError:
                     raise
@@ -289,12 +291,18 @@ async def run_translation_job(
                 try:
                     if job_control:
                         await job_control.check()
+                    source_text = (chapter.raw_text or "").strip()
+                    if not source_text:
+                        raise ValueError(
+                            f"Chapter {chapter.index} has no scraped source text. "
+                            "Run scraping again before translating."
+                        )
                     elapsed = asyncio.get_running_loop().time() - last_request_finished_at
                     if elapsed < request_cooldown_seconds:
                         await asyncio.sleep(request_cooldown_seconds - elapsed)
                     update_chapter(chapter.id, status=ChapterStatus.translating)
                     translated = await provider.translate_chapter(
-                        chapter.raw_text or "",
+                        source_text,
                         glossary,
                         model=model_name,
                     )

@@ -1308,9 +1308,12 @@ setStatus('Ready - Add a novel URL to get started.');
     renderSidebar(); renderDetail(); renderGlossary(); renderProviders(); renderAdapters();
   }
 
-  function refresh() {
+  function refresh(done) {
     if (!bridge) return;
-    bridge.get_snapshot(function (raw) { hydrate(JSON.parse(raw)); });
+    bridge.get_snapshot(function (raw) {
+      hydrate(JSON.parse(raw));
+      if (typeof done === 'function') done();
+    });
   }
 
   function provider() {
@@ -1506,7 +1509,28 @@ setStatus('Ready - Add a novel URL to get started.');
     };
     const add = $('#btnAddNovel');
     if (add) add.onclick = function () {
-      const modal = openModal(`<div class="m-head"><h3>Add Novel from URL</h3><button class="m-x" data-mx>${ic('x')}</button></div><div class="m-body"><label class="flabel">Novel URL</label><input class="input" id="webNovelUrl" placeholder="https://example.com/novel/..." style="width:100%"><div class="field-err" id="webNovelErr" hidden></div></div><div class="m-foot"><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="webNovelOk">${ic('plus')} Add Novel</button></div>`);
+      const modal = openModal(`<div class="m-head"><h3>Add Novel</h3><button class="m-x" data-mx>${ic('x')}</button></div><div class="m-body"><label class="flabel">Novel URL</label><input class="input" id="webNovelUrl" placeholder="https://example.com/novel/..." style="width:100%"><div class="field-err" id="webNovelErr" hidden></div><p class="m-hint">Add a supported website URL, or import chapters from an EPUB file.</p></div><div class="m-foot"><button class="btn btn-outline" id="webNovelImport">Import EPUB…</button><button class="btn btn-ghost" data-mx>Cancel</button><button class="btn btn-primary" id="webNovelOk">${ic('plus')} Add Novel</button></div>`);
+      modal.querySelector('#webNovelImport').onclick = function () {
+        const importButton = modal.querySelector('#webNovelImport');
+        importButton.disabled = true;
+        bridge.import_epub(function (raw) {
+          importButton.disabled = false;
+          const result = JSON.parse(raw);
+          if (result.cancelled) return;
+          if (!result.ok) {
+            const error = modal.querySelector('#webNovelErr');
+            error.hidden = false;
+            error.textContent = result.error || 'Unable to import this EPUB.';
+            return;
+          }
+          closeModal();
+          refresh(function () {
+            selectNovel(String(result.id));
+            setStatus(`Imported “${result.title}” with ${result.chapters} chapters.`);
+            toast(`EPUB imported — ${result.chapters} chapters are ready to translate.`);
+          });
+        });
+      };
       modal.querySelector('#webNovelOk').onclick = function () {
         const url = modal.querySelector('#webNovelUrl').value.trim(), error = modal.querySelector('#webNovelErr');
         if (!/^https?:\/\//i.test(url)) { error.hidden = false; error.textContent = 'Enter a valid URL starting with http:// or https://.'; return; }

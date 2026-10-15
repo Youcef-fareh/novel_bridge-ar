@@ -36,6 +36,10 @@ transliterating it separately.
         "TASK\n"
         "Translate the following chapter into fluent, literary, publication-quality "
         "Arabic. Preserve all paragraph breaks exactly as they appear in the source. "
+        "Translate every sentence and every paragraph in order; do not summarize, "
+        "shorten, skip, continue, or invent any part of the source. The input may be "
+        "one part of a longer chapter, so translate only the text provided. Never ask "
+        "the user to provide the chapter text. "
         "Output ONLY the translated Arabic text — no commentary, no preamble, no "
         "notes, no English text, no romanization left in place.\n\n"
 
@@ -148,4 +152,4 @@ class TranslationProvider(ABC):
     @abstractmethod
     def is_available(self) -> bool:
         """Return True if the provider has a valid API key configured."""
-        ...
+        ...

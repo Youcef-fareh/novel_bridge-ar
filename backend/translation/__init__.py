@@ -11,6 +11,7 @@ from backend.translation.base import (
 )
 from backend.translation.gemini_provider import GEMINI_MODELS, GeminiProvider
 from backend.translation.groq_provider import GROQ_MODELS, GroqProvider
+from backend.translation.grok_provider import GROK_MODELS, GrokProvider
 from backend.translation.orcarouter_provider import (
     ORCAROUTER_MODELS,
     OrcaRouterProvider,
@@ -27,6 +28,7 @@ PROVIDER_MODELS: Dict[str, List[str]] = {
     "orcarouter": ORCAROUTER_MODELS,
     "gemini": GEMINI_MODELS,
     "groq": GROQ_MODELS,
+    "grok": GROK_MODELS,
 }
 
 PROVIDER_DISPLAY_NAMES: List[Tuple[str, str]] = [
@@ -34,6 +36,7 @@ PROVIDER_DISPLAY_NAMES: List[Tuple[str, str]] = [
     ("orcarouter", "OrcaRouter (DeepSeek / Free)"),
     ("gemini", "Google Gemini"),
     ("groq", "Groq"),
+    ("grok", "xAI Grok"),
     ("auto", "Auto (Best Available)"),
 ]
 
@@ -83,6 +86,15 @@ def get_provider(
             )
         return provider
 
+    elif name == "grok":
+        provider = GrokProvider(model=model)
+        if not provider.is_available():
+            raise RuntimeError(
+                "Grok API key not configured. "
+                "Please set XAI_API_KEY in your .env or API Keys settings."
+            )
+        return provider
+
     # "auto" or unspecified: pick first available provider
     # Try TokenRouter -> OrcaRouter -> Gemini -> Groq
     tr = TokenRouterProvider(model=model)
@@ -101,9 +113,13 @@ def get_provider(
     if groq.is_available():
         return groq
 
+    grok = GrokProvider(model=model)
+    if grok.is_available():
+        return grok
+
     raise RuntimeError(
         "No translation API key configured.\n"
-        "Please configure TOKENROUTER_API_KEY, ORCAROUTER_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY in the 'API Keys' tab."
+        "Please configure TOKENROUTER_API_KEY, ORCAROUTER_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, or XAI_API_KEY in the 'API Keys' tab."
     )
 
 
@@ -114,6 +130,7 @@ __all__ = [
     "OrcaRouterProvider",
     "GeminiProvider",
     "GroqProvider",
+    "GrokProvider",
     "build_system_prompt",
     "apply_glossary_postpass",
     "get_provider",
@@ -123,4 +140,5 @@ __all__ = [
     "ORCAROUTER_MODELS",
     "GEMINI_MODELS",
     "GROQ_MODELS",
+    "GROK_MODELS",
 ]

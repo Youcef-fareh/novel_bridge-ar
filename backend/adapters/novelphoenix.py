@@ -18,7 +18,7 @@ except ImportError:
 
 from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
 from backend.adapters.fetcher import (
-    fetch_html, parse_attr, parse_chapter_body, parse_links, parse_text
+    fetch_html, parse_chapter_body, parse_cover_url, parse_links, parse_text
 )
 
 _SITE_ID = "novelphoenix"
@@ -50,9 +50,11 @@ class NovelPhoenixAdapter(SiteAdapter):
         if author and author.lower().startswith("author:"):
             author = author[7:].strip()
 
-        cover_url = parse_attr(html, _split_selectors(_SEL.get("novel_cover", ".cover img, .novel-info img")), "src")
-        if cover_url and cover_url.startswith("/"):
-            cover_url = urljoin(_BASE, cover_url)
+        cover_url = parse_cover_url(
+            html,
+            _split_selectors(_SEL.get("novel_cover", ".cover img, .novel-info img")),
+            novel_url,
+        )
 
         description = parse_text(html, _split_selectors(_SEL.get("novel_description", ".summary, .description")))
         if description and description.lower().startswith("summary"):

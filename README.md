@@ -5,6 +5,7 @@ A Python-based app for fetching, translating, and packaging novels from supporte
 ## Features
 
 - Scrape chapters from supported novel sites
+- Import EPUB books and add their chapters to the translation library
 - Normalize source content for processing
 - Translate chapters using configurable providers
 - Build EPUB output files

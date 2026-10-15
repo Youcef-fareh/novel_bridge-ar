@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import QDialog, QInputDialog, QLineEdit, QMessageBox
+from PyQt6.QtWidgets import QFileDialog, QDialog, QInputDialog, QLineEdit, QMessageBox
 
 from backend.adapters.base import AdapterRegistry
 from backend.database import (
@@ -26,8 +27,10 @@ from backend.database import (
 )
 from backend.models import ChapterStatus
 from backend.pipeline import JobControl, run_epub_job, run_scrape_job, run_translation_job
-from backend.translation import GeminiProvider, GroqProvider, OrcaRouterProvider, TokenRouterProvider
+from backend.translation import GeminiProvider, GroqProvider, GrokProvider, OrcaRouterProvider, TokenRouterProvider
 from gui.widgets.api_keys import ENV_FILE, _PROVIDER_GROUPS, _read_env_file, _write_env_file
+
+logger = logging.getLogger(__name__)
 
 
 class _AsyncWorkerSignals(QObject):
@@ -156,6 +159,39 @@ class NovelBridgeWebChannel(QObject):
         novel = create_novel(url.strip(), adapter.site_id)
         self.state_changed.emit("novels")
         return json.dumps({"ok": True, "id": novel.id})
+
+    @pyqtSlot(result=str)
+    def import_epub(self) -> str:
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Import EPUB novel",
+            "",
+            "EPUB files (*.epub)",
+        )
+        if not file_path:
+            return json.dumps({"ok": False, "cancelled": True})
+
+        try:
+            from backend.epub_importer import import_epub_file
+
+            novel = import_epub_file(file_path)
+        except Exception as exc:
+            logger.exception("Failed to import EPUB: %s", file_path)
+            return json.dumps({"ok": False, "error": str(exc)})
+
+        self.state_changed.emit("novels")
+        from backend.database import get_chapters
+
+        chapter_count = len(get_chapters(novel.id))
+        return json.dumps(
+            {
+                "ok": True,
+                "id": novel.id,
+                "title": novel.title,
+                "chapters": chapter_count,
+            },
+            ensure_ascii=False,
+        )
 
     @pyqtSlot(int, result=bool)
     def remove_novel(self, novel_id: int) -> bool:
@@ -437,6 +473,7 @@ class NovelBridgeWebChannel(QObject):
         provider_classes = {
             "gemini": GeminiProvider,
             "groq": GroqProvider,
+            "grok": GrokProvider,
             "tokenrouter": TokenRouterProvider,
             "orcarouter": OrcaRouterProvider,
         }

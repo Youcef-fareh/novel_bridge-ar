@@ -134,7 +134,8 @@ class WTRLabAdapter(SiteAdapter):
     site_id = _SITE_ID
 
     def can_handle(self, url: str) -> bool:
-        return "wtr-lab.com" in url
+        lowered = url.lower()
+        return "wtr-lab.com" in lowered
 
     # ------------------------------------------------------------------
     # Metadata
