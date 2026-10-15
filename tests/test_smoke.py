@@ -354,6 +354,37 @@ async def test_galaxy_uses_full_manifest(monkeypatch):
     monkeypatch.setattr(galaxy_module, "_fetch_galaxy_html", AsyncMock(return_value=html))
     fetch_manifest = AsyncMock(return_value=manifest)
     monkeypatch.setattr(galaxy_module, "fetch_html", fetch_manifest)
+    monkeypatch.setattr(
+        galaxy_module,
+        "fetch_html_playwright",
+        AsyncMock(side_effect=AssertionError("fetch_html_playwright should not be called")),
+    )
+
+    refs = await galaxy_module.GalaxyNovelsAdapter().get_chapter_list(novel_url)
+
+    assert [ref.title for ref in refs] == ["Chapter 1", "Chapter 2"]
+    fetch_manifest.assert_awaited_once_with(
+        "https://galaxynovels.com/api/chapters.json", "galaxynovels"
+    )
+
+
+@pytest.mark.asyncio
+async def test_galaxy_uses_full_manifest_bs4_fallback(monkeypatch):
+    import backend.adapters.galaxynovels as galaxy_module
+
+    novel_url = "https://galaxynovels.com/novel/example/"
+    html = '<div class="wor-novel-chapters-wrap" data-manifest-url="/api/chapters.json"></div>'
+    manifest = '{"chapters": [{"url": "/chapter-1/", "label": "Chapter 1"}, {"url": "/chapter-2/", "label": "Chapter 2"}]}'
+
+    monkeypatch.setattr(galaxy_module, "_SELECTOLAX_AVAILABLE", False)
+    monkeypatch.setattr(galaxy_module, "_fetch_galaxy_html", AsyncMock(return_value=html))
+    fetch_manifest = AsyncMock(return_value=manifest)
+    monkeypatch.setattr(galaxy_module, "fetch_html", fetch_manifest)
+    monkeypatch.setattr(
+        galaxy_module,
+        "fetch_html_playwright",
+        AsyncMock(side_effect=AssertionError("fetch_html_playwright should not be called")),
+    )
 
     refs = await galaxy_module.GalaxyNovelsAdapter().get_chapter_list(novel_url)
 

@@ -70,3 +70,13 @@ scratch/
 # Local EPUB import examples and UI recommendations
 /eupb import exa,mple/
 /recpmadtiont for the ui.txt
+
+# Local crawler dev references
+lightnovel-crawler-dev/
+lightnovel-crawler-dev.zip
+
+# Local enhancement planning docs
+docs/ENHANCEMENT_PLAN_FULL_9_TRACKS.md
+docs/ENHANCEMENT_PLAN_TEMPLATES_AND_ANTIBOT.md
+
+

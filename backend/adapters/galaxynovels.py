@@ -14,7 +14,8 @@ try:
     _SELECTOLAX_AVAILABLE = True
 except ImportError:
     _SELECTOLAX_AVAILABLE = False
-    from bs4 import BeautifulSoup
+
+from bs4 import BeautifulSoup
 
 from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
 from backend.adapters.fetcher import (
@@ -105,14 +106,23 @@ class GalaxyNovelsAdapter(SiteAdapter):
         author = parse_text(html, _split_selectors(_SEL.get("novel_author", ".author, .wor-author a")))
         
         # If author not found in standard selectors, search for author metadata in meta tags or descriptions
-        if not author and _SELECTOLAX_AVAILABLE:
-            tree = HTMLParser(html)
-            desc_meta = tree.css_first("meta[name=description]")
-            if desc_meta:
-                m_text = desc_meta.attributes.get("content", "")
-                match = re.search(r"المؤلف\s+([^على]+?)\s+على", m_text)
-                if match:
-                    author = match.group(1).strip()
+        if not author:
+            if _SELECTOLAX_AVAILABLE:
+                tree = HTMLParser(html)
+                desc_meta = tree.css_first("meta[name=description]")
+                if desc_meta:
+                    m_text = desc_meta.attributes.get("content", "")
+                    match = re.search(r"المؤلف\s+([^على]+?)\s+على", m_text)
+                    if match:
+                        author = match.group(1).strip()
+            else:
+                soup = BeautifulSoup(html, "html.parser")
+                desc_meta = soup.select_one("meta[name=description]")
+                if desc_meta:
+                    m_text = desc_meta.get("content", "")
+                    match = re.search(r"المؤلف\s+([^على]+?)\s+على", m_text)
+                    if match:
+                        author = match.group(1).strip()
 
         cover_url = parse_attr(html, _split_selectors(_SEL.get("novel_cover", ".wor-single-thumb img, .wor-single-cover img, .wp-post-image")), "src")
         if not cover_url:
@@ -146,6 +156,7 @@ class GalaxyNovelsAdapter(SiteAdapter):
         seen_urls = set()
 
         # Method 1: Read the full chapter manifest before falling back to the paginated DOM.
+        index_url = ""
         if _SELECTOLAX_AVAILABLE:
             tree = HTMLParser(html)
             container = tree.css_first(
@@ -155,27 +166,41 @@ class GalaxyNovelsAdapter(SiteAdapter):
                 index_url = (
                     container.attributes.get("data-manifest-url")
                     or container.attributes.get("data-index-url")
+                    or ""
                 )
-                try:
-                    json_str = await fetch_html(urljoin(novel_url, index_url), _SITE_ID)
-                    data = json.loads(json_str)
-                    raw_chapters = data.get("chapters", [])
-                    for item in raw_chapters:
-                        ch_url = item.get("url")
-                        if ch_url and ch_url not in seen_urls:
-                            seen_urls.add(ch_url)
-                            label = item.get("label", "")
-                            title_extra = item.get("title", "")
-                            title = f"{label} {title_extra}".strip() if title_extra else label
-                            refs.append(ChapterRef(
-                                index=len(refs),
-                                title=title or f"Chapter {len(refs)+1}",
-                                source_url=ch_url
-                            ))
-                    if refs:
-                        return refs
-                except Exception:
-                    pass  # Fall back to HTML parsing if JSON index fetch fails
+        else:
+            soup = BeautifulSoup(html, "html.parser")
+            container = soup.select_one(
+                ".wor-novel-chapters-wrap, [data-manifest-url], [data-index-url]"
+            )
+            if container:
+                index_url = (
+                    container.get("data-manifest-url")
+                    or container.get("data-index-url")
+                    or ""
+                )
+
+        if index_url:
+            try:
+                json_str = await fetch_html(urljoin(novel_url, index_url), _SITE_ID)
+                data = json.loads(json_str)
+                raw_chapters = data.get("chapters", [])
+                for item in raw_chapters:
+                    ch_url = item.get("url")
+                    if ch_url and ch_url not in seen_urls:
+                        seen_urls.add(ch_url)
+                        label = item.get("label", "")
+                        title_extra = item.get("title", "")
+                        title = f"{label} {title_extra}".strip() if title_extra else label
+                        refs.append(ChapterRef(
+                            index=len(refs),
+                            title=title or f"Chapter {len(refs)+1}",
+                            source_url=ch_url
+                        ))
+                if refs:
+                    return refs
+            except Exception:
+                pass  # Fall back to HTML parsing if JSON index fetch fails
 
         # Method 2: Fallback to DOM HTML parsing
         selectors = _split_selectors(_SEL.get("chapter_list", ".wor-novel-chapters-list a, .wor-novel-chapter-item a"))
@@ -251,16 +276,29 @@ class GalaxyNovelsAdapter(SiteAdapter):
             html = await fetch_html_playwright(
                 novel_url, ".wor-novel-chapters-list, [data-manifest-url], [data-index-url]"
             )
-            tree = HTMLParser(html) if _SELECTOLAX_AVAILABLE else None
-            if tree:
+            index_url = ""
+            if _SELECTOLAX_AVAILABLE:
+                tree = HTMLParser(html)
                 container = tree.css_first(
                     ".wor-novel-chapters-wrap, [data-manifest-url], [data-index-url]"
                 )
-                index_url = (
-                    (container.attributes.get("data-manifest-url")
-                     or container.attributes.get("data-index-url"))
-                    if container else ""
+                if container:
+                    index_url = (
+                        container.attributes.get("data-manifest-url")
+                        or container.attributes.get("data-index-url")
+                        or ""
+                    )
+            else:
+                soup = BeautifulSoup(html, "html.parser")
+                container = soup.select_one(
+                    ".wor-novel-chapters-wrap, [data-manifest-url], [data-index-url]"
                 )
+                if container:
+                    index_url = (
+                        container.get("data-manifest-url")
+                        or container.get("data-index-url")
+                        or ""
+                    )
                 if index_url:
                     index_html = await fetch_html_playwright(urljoin(novel_url, index_url))
                     try:
