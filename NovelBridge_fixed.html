@@ -116,35 +116,12 @@ main{flex:1;min-height:0;position:relative}
 .help-code{margin-top:12px;padding:12px 14px;border-radius:8px;background:var(--paper2);color:var(--ink-soft);font:12px/1.9 var(--font-m);overflow:auto}.help-code b{color:var(--teal-strong)}
 
 /* ---------- library ---------- */
-.library-grid{display:flex;gap:16px;width:100%;height:100%;min-height:0}
-.lib-sidebar{flex:none;width:266px;display:flex;flex-direction:column;gap:10px;min-height:0}
-.side-head{display:flex;align-items:center;gap:8px;font:600 15px var(--font-d);color:var(--ink)}
-.side-head .ic{color:var(--teal)}
-.search-wrap{position:relative}
-.search-wrap .ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--faint)}
-.search-wrap input{width:100%;height:36px;padding:0 30px 0 32px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);font:13px var(--font-u);color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
-.search-wrap input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(14,107,91,.13)}
-.search-wrap input::placeholder{color:var(--faint)}
-.search-clear{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:none;background:transparent;color:var(--faint);cursor:pointer;padding:4px;border-radius:6px;display:none}
-.search-clear:hover{color:var(--red);background:var(--red-soft)}
-.search-wrap.has .search-clear{display:block}
-.novel-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
-.novel-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;cursor:pointer;border:1px solid transparent;transition:background .13s,border-color .13s;position:relative}
-.novel-row:hover{background:var(--surface2);border-color:var(--line)}
-.novel-row.active{background:var(--sel);border-color:var(--line2);box-shadow:inset 3px 0 0 var(--bronze)}
-.ncover{width:38px;height:54px;object-fit:cover;border-radius:5px;border:1px solid var(--line2);background:var(--paper2);flex:none}
 .avatar-cover{display:grid;place-items:center;overflow:hidden;font:700 20px var(--font-d);color:var(--teal);background:var(--teal-soft);}
 .avatar-cover img{width:100%;height:100%;object-fit:cover;display:block}
 .avatar-cover .avatar-letter{display:grid;place-items:center;width:100%;height:100%}
 .avatar-cover.has-image .avatar-letter{display:none}
 .avatar-cover.image-failed img{display:none}
 .avatar-cover.image-failed .avatar-letter{display:grid}
-.ninfo{min-width:0;flex:1}
-.ntitle{font-weight:600;font-size:12.8px;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
-.nmeta{font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px}
-.ndot{width:8px;height:8px;border-radius:50%;flex:none}
-.side-actions{display:flex;gap:8px}
-.side-actions .btn{flex:1;justify-content:center}
 .lib-detail{flex:1;min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:14px;padding-right:2px}
 .empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--muted);border:1.5px dashed var(--line2);border-radius:14px;background:var(--surface2)}
 .empty-state .ring{width:84px;height:84px;border-radius:50%;background:var(--surface);border:1px solid var(--line2);display:grid;place-items:center;color:var(--bronze)}
@@ -343,16 +320,61 @@ tr.asel{background:var(--sel)}
 .t-ok .ic{color:#7fd6a4}.t-err .ic{color:#f0938a}.t-warn .ic{color:#e8c069}.t-info .ic{color:#8fb7ee}
 
 /* context menu */
-#ctxMenu{position:fixed;z-index:130;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 14px 34px rgba(30,20,5,.25);padding:5px;display:none;min-width:170px}
-#ctxMenu button{display:flex;gap:9px;align-items:center;width:100%;border:none;background:transparent;padding:8px 10px;border-radius:7px;font:600 12.5px var(--font-u);color:var(--red);cursor:pointer;text-align:left}
-#ctxMenu button:hover{background:var(--red-soft)}
+
+/* ---------- library bookshelf ---------- */
+#page-library.active{display:flex;flex-direction:column}
+.library-catalog{display:flex;flex-direction:column;gap:16px;min-height:0;height:100%;overflow:hidden}
+.catalog-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex:none}
+.catalog-title{font:700 25px/1.2 var(--font-d);color:var(--ink)}
+.catalog-summary{margin-top:4px;color:var(--muted);font-size:12.5px}
+.catalog-summary strong{color:var(--teal)}
+.catalog-tools{display:flex;align-items:center;gap:9px;flex:none}
+.catalog-search{position:relative;width:min(360px,36vw)}
+.catalog-search .ic{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--faint)}
+.catalog-search input{width:100%;height:36px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);padding:0 12px 0 36px;color:var(--ink);font:12.5px var(--font-u);outline:none}
+.catalog-search input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(14,107,91,.12)}
+.catalog-select{height:36px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);padding:0 10px;color:var(--ink-soft);font:600 12px var(--font-u);outline:none}
+.catalog-scroll{flex:1;min-height:0;overflow:auto;padding:2px 3px 12px}
+.book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:15px}
+.book-card{overflow:hidden;display:flex;flex-direction:column;min-width:0;transition:transform .16s,border-color .16s,box-shadow .16s;cursor:pointer}
+.book-card:hover{transform:translateY(-2px);border-color:var(--line2);box-shadow:0 8px 24px rgba(35,28,12,.12)}
+.book-card:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.book-cover{height:150px;width:100%;border:0;border-bottom:1px solid var(--line);border-radius:0;background:linear-gradient(145deg,var(--teal-soft),var(--bronze-soft));color:var(--teal);font:700 44px var(--font-d)}
+.book-cover img{object-fit:cover}
+.book-cover .avatar-letter{background:linear-gradient(145deg,rgba(14,107,91,.1),rgba(154,106,26,.12))}
+.book-card-body{padding:13px;display:flex;flex-direction:column;gap:9px;min-height:156px;flex:1}
+.book-card-title{font:700 15px/1.3 var(--font-d);color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.book-card-meta{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.book-card-status{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
+.book-card-status .pill{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.book-card-progress{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted)}
+.book-card-progress strong{font:600 11px var(--font-m);color:var(--ink-soft)}
+.book-progress{height:6px;background:var(--paper2);border-radius:999px;overflow:hidden}
+.book-progress span{display:block;height:100%;background:var(--teal);border-radius:inherit;transition:width .2s}
+.catalog-empty{min-height:230px;border:1.5px dashed var(--line2);border-radius:14px;background:var(--surface2);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;padding:24px;color:var(--muted)}
+.catalog-empty[hidden],#libraryCatalog[hidden],#libraryWorkspace[hidden]{display:none!important}
+.catalog-empty .ic{width:34px;height:34px;color:var(--bronze)}
+.catalog-empty h3{font:600 18px var(--font-d);color:var(--ink-soft)}
+.catalog-empty p{font-size:12px;max-width:350px}
+.library-workspace{height:100%;min-height:0;display:flex;flex-direction:column;gap:10px}
+.workspace-back{align-self:flex-start;flex:none}
+.workspace-detail{flex:1;min-height:0}
+.workspace-detail .lib-detail{height:100%}
+body.rtl .catalog-search .ic{left:auto;right:11px}
+body.rtl .catalog-search input{padding:0 36px 0 12px}
+@media(max-width:760px){
+  .catalog-head{align-items:flex-start;flex-direction:column}
+  .catalog-tools{width:100%;flex-wrap:wrap}
+  .catalog-search{width:100%;flex:1 1 100%}
+  .catalog-select{flex:1}
+  .book-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+  .book-cover{height:125px}
+}
 
 @media (max-width:980px){
   .app-header{height:auto;min-height:58px;flex-wrap:wrap;padding:10px 14px}
   .header-actions{flex-wrap:wrap;justify-content:flex-end}
   .help-grid{grid-template-columns:1fr}
-  .library-grid{flex-direction:column}
-  .lib-sidebar{width:100%;max-height:280px}
   .ws-grid{grid-template-columns:1fr}
   .stats{grid-template-columns:repeat(2,1fr)}
   .prov-card{flex-wrap:wrap;align-items:flex-end}
@@ -436,21 +458,38 @@ tr.asel{background:var(--sel)}
 <main>
   <!-- ============ LIBRARY ============ -->
   <section class="tab-page active" id="page-library">
-    <div class="library-grid">
-      <aside class="lib-sidebar">
-        <div class="side-head"><svg class="ic"><use href="#i-books"/></svg> <span data-i18n="library">Library</span></div>
-        <div class="search-wrap" id="searchWrap">
-          <svg class="ic"><use href="#i-search"/></svg>
-          <input id="novelSearch" placeholder="Search novels by title or author…" autocomplete="off">
-          <button class="search-clear" id="searchClear" title="Clear search"><svg class="ic ic-sm"><use href="#i-x"/></svg></button>
+    <div class="library-catalog" id="libraryCatalog">
+      <div class="catalog-head">
+        <div>
+          <h1 class="catalog-title" data-i18n="libraryTitle">My Library</h1>
+          <p class="catalog-summary" id="librarySummary"></p>
         </div>
-        <div class="novel-list" id="novelList"></div>
-        <div class="side-actions">
-          <button class="btn btn-danger btn-sm" id="btnLibDelete"><svg class="ic ic-sm"><use href="#i-trash"/></svg> <span data-i18n="delete">Delete</span></button>
-          <button class="btn btn-outline btn-sm" id="btnLibRefresh"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> <span data-i18n="refresh">Refresh</span></button>
+        <div class="catalog-tools">
+          <label class="catalog-search"><svg class="ic"><use href="#i-search"/></svg><input id="novelSearch" aria-label="Search by title, author, or website" data-i18n-aria-label="searchLibrary" data-i18n-placeholder="searchLibrary" placeholder="Search by title, author, or website" autocomplete="off"></label>
+          <select class="catalog-select" id="libraryFilter" aria-label="Filter novels" data-i18n-aria-label="filterLabel">
+            <option value="all" data-i18n="filterAll">All novels</option>
+            <option value="pending" data-i18n="filterPending">Not started</option>
+            <option value="scraped" data-i18n="filterScraped">Ready to translate</option>
+            <option value="translating" data-i18n="filterTranslating">Translating</option>
+            <option value="translated" data-i18n="filterTranslated">Completed</option>
+            <option value="failed" data-i18n="filterFailed">Needs attention</option>
+          </select>
+          <select class="catalog-select" id="librarySort" aria-label="Sort novels" data-i18n-aria-label="sortLabel">
+            <option value="recent" data-i18n="sortRecent">Recently added</option>
+            <option value="title" data-i18n="sortTitle">Title A–Z</option>
+            <option value="progress" data-i18n="sortProgress">Translation progress</option>
+          </select>
+          <button class="btn btn-outline btn-icon" id="btnLibRefresh" data-i18n-title="refresh" title="Refresh library" aria-label="Refresh library"><svg class="ic"><use href="#i-refresh"/></svg></button>
         </div>
-      </aside>
-      <div class="lib-detail" id="libDetail"></div>
+      </div>
+      <div class="catalog-scroll">
+        <div class="book-grid" id="novelCatalog"></div>
+        <div class="catalog-empty" id="catalogEmpty" hidden></div>
+      </div>
+    </div>
+    <div class="library-workspace" id="libraryWorkspace" hidden>
+      <button class="btn btn-ghost workspace-back" id="btnBackLibrary"><svg class="ic"><use href="#i-books"/></svg> <span data-i18n="backToLibrary">Back to library</span></button>
+      <div class="workspace-detail"><div class="lib-detail" id="libDetail"></div></div>
     </div>
   </section>
 
@@ -585,7 +624,6 @@ tr.asel{background:var(--sel)}
 
 <div class="modal-back" id="modalBack" hidden><div class="modal" id="modalBox"></div></div>
 <div id="toasts"></div>
-<div id="ctxMenu"><button id="ctxDelete"><svg class="ic ic-sm"><use href="#i-trash"/></svg> Delete Novel</button></div>
 
 <script>
 /* ================= helpers ================= */
@@ -596,8 +634,7 @@ const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const now=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 
 /* ================= data ================= */
-const COVERS={quill:'https://image.qwenlm.ai/public_source/419a6057-894e-4cb9-983a-adeb02cb7267/15843a2e5-203a-4944-acd4-6bdaea3fcb31.png'};
-const state={selectedId:null,checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],adpSel:null,glossSel:new Set(),language:localStorage.getItem('novelbridge-language')||'en'};
+const state={selectedId:null,libraryView:'catalog',libraryFilter:'all',librarySort:'recent',checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],adpSel:null,glossSel:new Set(),language:localStorage.getItem('novelbridge-language')||'en'};
 const current=()=>state.novels.find(n=>n.id===state.selectedId)||null;
 function avatarLetter(title){return Array.from(String(title||'?').trim())[0]?.toUpperCase()||'?'}
 function coverMarkup(title,url,cls){
@@ -619,8 +656,8 @@ function toast(msg,type='ok'){
 
 /* ================= language ================= */
 const UI_TEXT={
- en:{darkMode:'Dark mode',lightMode:'Light mode',startServer:'Start API Server',schedule:'Schedule Translations',addNovel:'Add Novel',library:'Library',glossary:'Glossary',apiKeys:'API Keys',addWebsite:'Add Website',adapters:'Adapters',help:'Help',delete:'Delete',refresh:'Refresh',translationGlossary:'Translation Glossary',syncJson:'Sync from JSON',addRule:'Add Rule',deleteSelected:'Delete Selected',apiProviders:'API Providers',reloadEnv:'Reload from .env',addProvider:'Add Provider',saveAll:'Save All',checkAdapter:'Check Adapter',generateAdapter:'Generate Adapter Template',uploadAdapter:'Upload Adapter File (.py)',import:'Import',githubSearch:'Open GitHub adapter search',provider:'Provider',model:'Model',requestGap:'Request gap',apiKeysAction:'API Keys',scrapeChapters:'Scrape Chapters',translateAll:'Translate All',translateSelected:'Translate Selected',deleteTranslation:'Delete Translation',buildEpub:'Build EPUB',deleteNovel:'Delete Novel',helpTitle:'How NovelBridge works',helpIntro:'A short guide to add a novel, configure translation, and export an EPUB.',helpStep1:'1. Add a novel',helpText1:'Open Library, click Add Novel, and paste a supported novel URL. Scrape Chapters loads the available chapter list.',helpStep2:'2. Configure translation',helpText2:'Open API Keys, edit a provider, paste your API key, choose a model, and click Save All. Use Auto or select a provider in the novel details.',helpStep3:'3. Translate chapters',helpText3:'Select chapters and start translation. Failed chapters can be retried after checking the provider key, quota, model, and internet connection.',helpStep4:'4. Build your book',helpText4:'When chapters are translated, click Build EPUB. The finished file is written to the output folder and can be opened in an ebook reader.',helpProviderTitle:'Provider example: Google Gemini',helpProviderText:'In API Keys, choose Google Gemini and enter your key. Example model: gemini-3.5-flash-lite. Google Gemini uses the official SDK endpoint https://generativelanguage.googleapis.com internally, so do not add GEMINI_BASE_URL in .env. A configurable Base URL is only used by OpenAI-compatible providers such as TokenRouter or OrcaRouter.',helpErrorsTitle:'Common problems',helpErrors:'No API key: configure one in API Keys. Rate limit: wait or switch provider. Unsupported URL: check Add Website. Missing chapters: retry failed chapters before building the EPUB.',helpDocs:'For the full bilingual guide, open docs/USER_GUIDE.md in the project folder.'},
- ar:{darkMode:'الوضع الداكن',lightMode:'الوضع الفاتح',startServer:'تشغيل خادم API',schedule:'جدولة الترجمات',addNovel:'إضافة رواية',library:'المكتبة',glossary:'المصطلحات',apiKeys:'مفاتيح API',addWebsite:'إضافة موقع',adapters:'الموصلات',help:'المساعدة',delete:'حذف',refresh:'تحديث',translationGlossary:'قاموس الترجمة',syncJson:'مزامنة من JSON',addRule:'إضافة قاعدة',deleteSelected:'حذف المحدد',apiProviders:'مزودو API',reloadEnv:'إعادة التحميل من .env',addProvider:'إضافة مزود',saveAll:'حفظ الكل',checkAdapter:'فحص الموصل',generateAdapter:'إنشاء قالب موصل',uploadAdapter:'رفع ملف موصل (.py)',import:'استيراد',githubSearch:'فتح بحث الموصلات في GitHub',provider:'المزود',model:'النموذج',requestGap:'الفاصل بين الطلبات',apiKeysAction:'مفاتيح API',scrapeChapters:'جلب الفصول',translateAll:'ترجمة الكل',translateSelected:'ترجمة المحدد',deleteTranslation:'حذف الترجمة',buildEpub:'إنشاء EPUB',deleteNovel:'حذف الرواية',helpTitle:'كيف يعمل NovelBridge',helpIntro:'دليل مختصر لإضافة رواية وإعداد الترجمة وإنشاء ملف EPUB.',helpStep1:'1. إضافة رواية',helpText1:'افتح المكتبة واضغط إضافة رواية، ثم الصق رابطاً مدعوماً. يقوم جلب الفصول بتحميل قائمة الفصول المتاحة.',helpStep2:'2. إعداد الترجمة',helpText2:'افتح مفاتيح API، وعدّل مزوداً، والصق مفتاحك، واختر نموذجاً، ثم اضغط حفظ الكل. يمكنك اختيار تلقائي أو مزود محدد من تفاصيل الرواية.',helpStep3:'3. ترجمة الفصول',helpText3:'اختر الفصول وابدأ الترجمة. يمكن إعادة محاولة الفصول الفاشلة بعد فحص المفتاح والحصة والنموذج واتصال الإنترنت.',helpStep4:'4. إنشاء الكتاب',helpText4:'بعد ترجمة الفصول اضغط إنشاء EPUB. يحفظ الملف النهائي داخل مجلد output ويمكن فتحه في قارئ الكتب.',helpProviderTitle:'مثال على مزود الترجمة: Google Gemini',helpProviderText:'من تبويب مفاتيح API اختر Google Gemini وأدخل مفتاحك. مثال اسم النموذج: gemini-3.5-flash-lite. يستخدم Google Gemini عنوان الخدمة الرسمي https://generativelanguage.googleapis.com داخلياً، لذلك لا تضف GEMINI_BASE_URL إلى ملف .env. يمكن تخصيص Base URL فقط للمزودين المتوافقين مع OpenAI مثل TokenRouter وOrcaRouter.',helpErrorsTitle:'المشكلات الشائعة',helpErrors:'لا يوجد مفتاح API: أضف مفتاحاً من مفاتيح API. تجاوز الحصة: انتظر أو بدّل المزود. رابط غير مدعوم: افحص إضافة موقع. فصول ناقصة: أعد محاولة الفصول الفاشلة قبل إنشاء EPUB.',helpDocs:'للدليل الكامل باللغتين، افتح docs/USER_GUIDE.md داخل مجلد المشروع.'}
+ en:{darkMode:'Dark mode',lightMode:'Light mode',startServer:'Start API Server',schedule:'Schedule Translations',addNovel:'Add Novel',library:'Library',libraryTitle:'My Library',searchLibrary:'Search by title, author, or website',filterLabel:'Filter novels',sortLabel:'Sort novels',filterAll:'All novels',filterPending:'Not started',filterScraped:'Ready to translate',filterTranslating:'Translating',filterTranslated:'Completed',filterFailed:'Needs attention',sortRecent:'Recently added',sortTitle:'Title A–Z',sortProgress:'Translation progress',backToLibrary:'Back to library',emptyLibraryTitle:'Your library is ready',emptyLibraryText:'Add a supported novel URL or import an EPUB to begin.',noLibraryMatches:'No novels match these filters.',noLibraryMatchesText:'Try changing your search or status filter.',chapterProgress:'chapters translated',chapters:'chapters',translationProgress:'Translation progress',openChapters:'Open chapters',statusPending:'Not started',statusScraped:'Ready to translate',statusTranslating:'Translating',statusTranslated:'Completed',statusFailed:'Needs attention',glossary:'Glossary',apiKeys:'API Keys',addWebsite:'Add Website',adapters:'Adapters',help:'Help',delete:'Delete',refresh:'Refresh',translationGlossary:'Translation Glossary',syncJson:'Sync from JSON',addRule:'Add Rule',deleteSelected:'Delete Selected',apiProviders:'API Providers',reloadEnv:'Reload from .env',addProvider:'Add Provider',saveAll:'Save All',checkAdapter:'Check Adapter',generateAdapter:'Generate Adapter Template',uploadAdapter:'Upload Adapter File (.py)',import:'Import',githubSearch:'Open GitHub adapter search',provider:'Provider',model:'Model',requestGap:'Request gap',apiKeysAction:'API Keys',scrapeChapters:'Scrape Chapters',translateAll:'Translate All',translateSelected:'Translate Selected',deleteTranslation:'Delete Translation',buildEpub:'Build EPUB',deleteNovel:'Delete Novel',helpTitle:'How NovelBridge works',helpIntro:'A short guide to add a novel, configure translation, and export an EPUB.',helpStep1:'1. Add a novel',helpText1:'Open Library, click Add Novel, and paste a supported novel URL. Scrape Chapters loads the available chapter list.',helpStep2:'2. Configure translation',helpText2:'Open API Keys, edit a provider, paste your API key, choose a model, and click Save All. Use Auto or select a provider in the novel details.',helpStep3:'3. Translate chapters',helpText3:'Select chapters and start translation. Failed chapters can be retried after checking the provider key, quota, model, and internet connection.',helpStep4:'4. Build your book',helpText4:'When chapters are translated, click Build EPUB. The finished file is written to the output folder and can be opened in an ebook reader.',helpProviderTitle:'Provider example: Google Gemini',helpProviderText:'In API Keys, choose Google Gemini and enter your key. Example model: gemini-3.5-flash-lite. Google Gemini uses the official SDK endpoint https://generativelanguage.googleapis.com internally, so do not add GEMINI_BASE_URL in .env. A configurable Base URL is only used by OpenAI-compatible providers such as TokenRouter or OrcaRouter.',helpErrorsTitle:'Common problems',helpErrors:'No API key: configure one in API Keys. Rate limit: wait or switch provider. Unsupported URL: check Add Website. Missing chapters: retry failed chapters before building the EPUB.',helpDocs:'For the full bilingual guide, open docs/USER_GUIDE.md in the project folder.'},
+ ar:{darkMode:'الوضع الداكن',lightMode:'الوضع الفاتح',startServer:'تشغيل خادم API',schedule:'جدولة الترجمات',addNovel:'إضافة رواية',library:'المكتبة',libraryTitle:'مكتبتي',searchLibrary:'ابحث بالعنوان أو المؤلف أو الموقع',filterLabel:'تصفية الروايات',sortLabel:'ترتيب الروايات',filterAll:'كل الروايات',filterPending:'لم تبدأ',filterScraped:'جاهزة للترجمة',filterTranslating:'قيد الترجمة',filterTranslated:'مكتملة',filterFailed:'تحتاج إلى مراجعة',sortRecent:'الأحدث إضافة',sortTitle:'العنوان أ–ي',sortProgress:'تقدم الترجمة',backToLibrary:'العودة إلى المكتبة',emptyLibraryTitle:'مكتبتك جاهزة',emptyLibraryText:'أضف رابط رواية مدعوماً أو استورد ملف EPUB للبدء.',noLibraryMatches:'لا توجد روايات تطابق هذه الفلاتر.',noLibraryMatchesText:'جرّب تغيير البحث أو حالة التصفية.',chapterProgress:'فصلاً مترجماً',chapters:'فصول',translationProgress:'تقدم الترجمة',openChapters:'فتح الفصول',statusPending:'لم تبدأ',statusScraped:'جاهزة للترجمة',statusTranslating:'قيد الترجمة',statusTranslated:'مكتملة',statusFailed:'تحتاج إلى مراجعة',glossary:'المصطلحات',apiKeys:'مفاتيح API',addWebsite:'إضافة موقع',adapters:'الموصلات',help:'المساعدة',delete:'حذف',refresh:'تحديث',translationGlossary:'قاموس الترجمة',syncJson:'مزامنة من JSON',addRule:'إضافة قاعدة',deleteSelected:'حذف المحدد',apiProviders:'مزودو API',reloadEnv:'إعادة التحميل من .env',addProvider:'إضافة مزود',saveAll:'حفظ الكل',checkAdapter:'فحص الموصل',generateAdapter:'إنشاء قالب موصل',uploadAdapter:'رفع ملف موصل (.py)',import:'استيراد',githubSearch:'فتح بحث الموصلات في GitHub',provider:'المزود',model:'النموذج',requestGap:'الفاصل بين الطلبات',apiKeysAction:'مفاتيح API',scrapeChapters:'جلب الفصول',translateAll:'ترجمة الكل',translateSelected:'ترجمة المحدد',deleteTranslation:'حذف الترجمة',buildEpub:'إنشاء EPUB',deleteNovel:'حذف الرواية',helpTitle:'كيف يعمل NovelBridge',helpIntro:'دليل مختصر لإضافة رواية وإعداد الترجمة وإنشاء ملف EPUB.',helpStep1:'1. إضافة رواية',helpText1:'افتح المكتبة واضغط إضافة رواية، ثم الصق رابطاً مدعوماً. يقوم جلب الفصول بتحميل قائمة الفصول المتاحة.',helpStep2:'2. إعداد الترجمة',helpText2:'افتح مفاتيح API، وعدّل مزوداً، والصق مفتاحك، واختر نموذجاً، ثم اضغط حفظ الكل. يمكنك اختيار تلقائي أو مزود محدد من تفاصيل الرواية.',helpStep3:'3. ترجمة الفصول',helpText3:'اختر الفصول وابدأ الترجمة. يمكن إعادة محاولة الفصول الفاشلة بعد فحص المفتاح والحصة والنموذج واتصال الإنترنت.',helpStep4:'4. إنشاء الكتاب',helpText4:'بعد ترجمة الفصول اضغط إنشاء EPUB. يحفظ الملف النهائي داخل مجلد output ويمكن فتحه في قارئ الكتب.',helpProviderTitle:'مثال على مزود الترجمة: Google Gemini',helpProviderText:'من تبويب مفاتيح API اختر Google Gemini وأدخل مفتاحك. مثال اسم النموذج: gemini-3.5-flash-lite. يستخدم Google Gemini عنوان الخدمة الرسمي https://generativelanguage.googleapis.com داخلياً، لذلك لا تضف GEMINI_BASE_URL إلى ملف .env. يمكن تخصيص Base URL فقط للمزودين المتوافقين مع OpenAI مثل TokenRouter وOrcaRouter.',helpErrorsTitle:'المشكلات الشائعة',helpErrors:'لا يوجد مفتاح API: أضف مفتاحاً من مفاتيح API. تجاوز الحصة: انتظر أو بدّل المزود. رابط غير مدعوم: افحص إضافة موقع. فصول ناقصة: أعد محاولة الفصول الفاشلة قبل إنشاء EPUB.',helpDocs:'للدليل الكامل باللغتين، افتح docs/USER_GUIDE.md داخل مجلد المشروع.'}
 };
 function applyLanguage(language){
  state.language=language==='ar'?'ar':'en';
@@ -630,6 +667,10 @@ function applyLanguage(language){
  $('#languageSelect').value=state.language;
  const text=UI_TEXT[state.language];
  $$('[data-i18n]').forEach(el=>{if(text[el.dataset.i18n])el.textContent=text[el.dataset.i18n]});
+ $$('[data-i18n-placeholder]').forEach(el=>{if(text[el.dataset.i18nPlaceholder])el.placeholder=text[el.dataset.i18nPlaceholder]});
+ $$('[data-i18n-title]').forEach(el=>{if(text[el.dataset.i18nTitle]){el.title=text[el.dataset.i18nTitle];el.setAttribute('aria-label',text[el.dataset.i18nTitle])}});
+ $$('[data-i18n-aria-label]').forEach(el=>{if(text[el.dataset.i18nAriaLabel])el.setAttribute('aria-label',text[el.dataset.i18nAriaLabel])});
+ if(typeof renderSidebar==='function')renderSidebar();
  if(typeof renderDetail==='function'&&current())renderDetail();
 }
 function t(key){return (UI_TEXT[state.language]&&UI_TEXT[state.language][key])||key}
@@ -654,7 +695,7 @@ function closeModal(){
  $('#modalBack').hidden=true;
 }
 $('#modalBack').addEventListener('mousedown',e=>{if(e.target.id==='modalBack')closeModal()});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#modalBack').hidden=true;$('#ctxMenu').style.display='none'}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#modalBack').hidden=true});
 function confirmBox(title,msg,okText='Delete'){
  return new Promise(res=>{
   let settled=false;
@@ -689,7 +730,7 @@ $$('.tab-btn').forEach(b=>b.onclick=()=>{
 });
 function gotoTab(t){$$('.tab-btn').find(b=>b.dataset.tab===t).click()}
 
-/* ================= library sidebar ================= */
+/* ================= library catalog ================= */
 function novelStatus(nv){
  const s=nv.chapters.map(c=>c.status);
  if(s.includes('translating'))return'translating';
@@ -698,36 +739,66 @@ function novelStatus(nv){
  if(s.some(x=>['scraped','translated','failed'].includes(x)))return'scraped';
  return'pending';
 }
-const stDot={pending:'var(--faint)',scraped:'var(--blue)',translating:'var(--amber)',translated:'var(--green)',failed:'var(--red)'};
 function renderSidebar(){
  const q=$('#novelSearch').value.trim().toLowerCase();
- $('#searchWrap').classList.toggle('has',!!q);
- const list=state.novels.filter(n=>!q||n.title.toLowerCase().includes(q)||n.author.toLowerCase().includes(q));
- $('#novelList').innerHTML=list.length?list.map(nv=>{
-  const t=nv.chapters.length,tr=nv.chapters.filter(c=>c.status==='translated').length,st=novelStatus(nv);
-  return`<div class="novel-row ${nv.id===state.selectedId?'active':''}" data-id="${nv.id}" title="${esc(nv.title)} · ${esc(nv.url)} · ${st.toUpperCase()}">
-  ${coverMarkup(nv.title,nv.cover,'ncover')}
-   <div class="ninfo"><div class="ntitle">${esc(nv.title)}</div><div class="nmeta">${esc(nv.site)} · ${tr}/${t} translated</div></div>
-   <span class="ndot" style="background:${stDot[st]}"></span></div>`;
- }).join(''):`<div style="text-align:center;color:var(--faint);font-size:12px;padding:22px 8px">No novels match “${esc(q)}”.</div>`;
- $('#btnLibDelete').disabled=!current();
+ const allCounts=state.novels.reduce((tot,nv)=>tot+nv.chapters.filter(c=>c.status==='translated').length,0);
+ $('#librarySummary').innerHTML=`<strong>${state.novels.length}</strong> ${state.language==='ar'?'رواية':'novels'} <span aria-hidden="true">·</span> ${allCounts} ${t('chapterProgress')}`;
+ const filter=state.libraryFilter;
+ const sort=state.librarySort;
+ const novels=state.novels.filter(nv=>{
+  const matchesText=!q||[nv.title,nv.author,nv.site,nv.url].some(value=>String(value||'').toLowerCase().includes(q));
+  return matchesText&&(filter==='all'||novelStatus(nv)===filter);
+ });
+ if(sort==='title')novels.sort((a,b)=>a.title.localeCompare(b.title));
+ else if(sort==='progress')novels.sort((a,b)=>{
+  const progress=nv=>nv.chapters.length?nv.chapters.filter(c=>c.status==='translated').length/nv.chapters.length:0;
+  return progress(b)-progress(a)||a.title.localeCompare(b.title);
+ });
+ else novels.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id).localeCompare(String(a.id),undefined,{numeric:true}));
+
+ $('#novelCatalog').innerHTML=novels.map(nv=>{
+  const total=nv.chapters.length,translated=nv.chapters.filter(c=>c.status==='translated').length;
+  const status=novelStatus(nv),progress=total?Math.round(translated/total*100):0;
+  const statusLabels={pending:t('statusPending'),scraped:t('statusScraped'),translating:t('statusTranslating'),translated:t('statusTranslated'),failed:t('statusFailed')};
+  const statusClass={pending:'off',scraped:'ok',translating:'warn',translated:'ok',failed:'err'};
+  return`<article class="card book-card" data-id="${esc(nv.id)}" role="button" tabindex="0" aria-label="${esc(t('openChapters'))}: ${esc(nv.title)}">
+   ${coverMarkup(nv.title,nv.cover,'book-cover')}
+   <div class="book-card-body">
+    <h2 class="book-card-title">${esc(nv.title)}</h2>
+    <p class="book-card-meta">${esc(nv.author||'')} · ${esc(nv.site||'')}</p>
+    <div class="book-card-status"><span class="pill ${statusClass[status]}"><i></i>${esc(statusLabels[status])}</span></div>
+    <div class="book-card-progress"><span>${translated} / ${total} ${esc(t('chapters'))}</span><strong>${progress}%</strong></div>
+    <div class="book-progress" role="progressbar" aria-label="${esc(t('translationProgress'))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
+   </div>
+  </article>`;
+ }).join('');
+ $('#catalogEmpty').hidden=novels.length>0;
+ if(!novels.length){
+  const isEmpty=state.novels.length===0;
+  $('#catalogEmpty').innerHTML=`${ic('books','ic-xl')}<h3>${esc(t(isEmpty?'emptyLibraryTitle':'noLibraryMatches'))}</h3><p>${esc(t(isEmpty?'emptyLibraryText':'noLibraryMatchesText'))}</p>${isEmpty?`<button class="btn btn-primary" id="btnEmptyAdd">${ic('plus')} ${esc(t('addNovel'))}</button>`:''}`;
+ }
+ $('#libraryCatalog').hidden=state.libraryView!=='catalog';
+ $('#libraryWorkspace').hidden=state.libraryView!=='workspace';
 }
 $('#novelSearch').addEventListener('input',renderSidebar);
-$('#searchClear').onclick=()=>{$('#novelSearch').value='';renderSidebar()};
-$('#novelList').addEventListener('click',e=>{const r=e.target.closest('.novel-row');if(r)selectNovel(r.dataset.id)});
-$('#novelList').addEventListener('contextmenu',e=>{
- const r=e.target.closest('.novel-row');if(!r)return;e.preventDefault();
- selectNovel(r.dataset.id);
- const m=$('#ctxMenu');m.style.display='block';
- m.style.left=Math.min(e.clientX,innerWidth-190)+'px';m.style.top=Math.min(e.clientY,innerHeight-60)+'px';
+$('#libraryFilter').addEventListener('change',e=>{state.libraryFilter=e.target.value;renderSidebar()});
+$('#librarySort').addEventListener('change',e=>{state.librarySort=e.target.value;renderSidebar()});
+$('#novelCatalog').addEventListener('click',e=>{
+ const card=e.target.closest('.book-card');
+ if(card)selectNovel(card.dataset.id);
 });
-$('#ctxDelete').onclick=()=>{$('#ctxMenu').style.display='none';deleteNovel(current())};
-document.addEventListener('click',e=>{if(!e.target.closest('#ctxMenu'))$('#ctxMenu').style.display='none'});
-$('#btnLibRefresh').onclick=()=>{renderSidebar();renderDetail();toast('Library refreshed','info');setStatus('Library reloaded from local store.')};
-$('#btnLibDelete').onclick=()=>deleteNovel(current());
-
+$('#novelCatalog').addEventListener('keydown',e=>{
+ const card=e.target.closest('.book-card');
+ if(card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();selectNovel(card.dataset.id)}
+});
+$('#catalogEmpty').addEventListener('click',e=>{if(e.target.closest('#btnEmptyAdd'))$('#btnAddNovel').click()});
+$('#btnLibRefresh').onclick=()=>{
+ if(typeof window.refreshLibrary==='function')window.refreshLibrary(()=>toast('Library refreshed','info'));
+ else{renderSidebar();toast('Library refreshed','info')}
+};
+$('#btnBackLibrary').onclick=()=>{state.libraryView='catalog';renderSidebar()};
 function selectNovel(id){
- state.selectedId=id;state.checked.clear();
+ state.selectedId=id;state.checked.clear();state.libraryView='workspace';
  renderSidebar();renderDetail();
  const nv=current();if(nv)setStatus(`Selected “${nv.title}”.`);
 }
@@ -736,7 +807,7 @@ async function deleteNovel(nv){
  const ok=await confirmBox('Delete Novel',`Delete “${nv.title}” and all of its chapters, scraped text and translations? This cannot be undone.`);
  if(!ok)return;
  state.novels=state.novels.filter(n=>n.id!==nv.id);
- if(state.selectedId===nv.id){state.selectedId=null;state.checked.clear()}
+ if(state.selectedId===nv.id){state.selectedId=null;state.checked.clear();state.libraryView='catalog'}
  renderSidebar();renderDetail();toast(`Deleted “${nv.title}”.`,'err');setStatus('Novel deleted.');
 }
 
@@ -871,7 +942,6 @@ function refreshControls(){
  el('btnEpub').disabled=job||c.translated===0;
  el('btnDrive').disabled=job;
  el('btnDelNovel').disabled=job;
- $('#btnLibDelete').disabled=!nv;
 }
 /* detail delegation */
 $('#libDetail').addEventListener('click',e=>{
@@ -956,7 +1026,7 @@ $('#btnAddNovel').onclick=()=>{
   if(!ad)return fail('Unsupported Site — no installed adapter recognizes this URL. Installed: '+state.adapters.map(a=>a.site).join(', '));
   let slug;try{slug=decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop()||'untitled')}catch(e){slug='untitled'}
   const title=slug.replace(/[-_]+/g,' ').replace(/\b\w/g,x=>x.toUpperCase());
-  const nv={id:'n'+Date.now(),title,author:'Unknown author',site:ad.site,url,cover:COVERS.quill,chapters:[]};
+  const nv={id:'n'+Date.now(),title,author:'Unknown author',site:ad.site,url,cover:'',chapters:[]};
   state.novels.unshift(nv);closeModal();
   gotoTab('library');selectNovel(nv.id);
   toast(`Novel added — “${title}” via ${ad.site}.`);setStatus('Novel added. Run “Scrape Chapters” to fetch the TOC.');
@@ -1250,7 +1320,7 @@ document.addEventListener('keydown',e=>{
  const typing=/INPUT|TEXTAREA|SELECT/.test(active?.tagName||'');
  const modalOpen=!$('#modalBack').hidden;
  const libraryOpen=$('.tab-page.active')?.id==='page-library';
- if(e.key==='Delete'&&!typing&&!modalOpen&&libraryOpen&&current()){
+ if(e.key==='Delete'&&!typing&&!modalOpen&&libraryOpen&&state.libraryView==='workspace'&&current()){
   e.preventDefault();
   deleteNovel(current());
  }
@@ -1273,7 +1343,6 @@ applyLanguage(state.language);
 
 /* ================= init ================= */
 renderSidebar();renderDetail();renderGlossary();renderProviders();renderAdapters();
-selectNovel('n1');
 setStatus('Ready - Add a novel URL to get started.');
 </script>
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
@@ -1286,7 +1355,8 @@ setStatus('Ready - Add a novel URL to get started.');
   function hydrate(snapshot) {
     state.novels = (snapshot.novels || []).map(n => ({
       id: String(n.id), title: n.title, author: n.author || 'Unknown author',
-      site: n.source_site, url: n.source_url, cover: n.cover_url || COVERS.quill,
+      site: n.source_site, url: n.source_url, cover: n.cover_url || '',
+      createdAt: n.created_at || '',
       chapters: (n.chapters || []).map(c => ({
         dbId: c.id, num: c.index + 1, title: c.title, status: c.status,
         has_translation: c.has_translation
@@ -1303,8 +1373,11 @@ setStatus('Ready - Add a novel URL to get started.');
       site: a.site_id, cls: a.class_name, src: a.source,
       lang: 'English', method: 'Configured', file: ''
     }));
-    if (state.selectedId && !current()) state.selectedId = null;
-    if (!state.selectedId && state.novels.length) state.selectedId = String(state.novels[0].id);
+    if (state.selectedId && !current()) {
+      state.selectedId = null;
+      state.libraryView = 'catalog';
+    }
+    if (!state.selectedId) state.libraryView = 'catalog';
     renderSidebar(); renderDetail(); renderGlossary(); renderProviders(); renderAdapters();
   }
 
@@ -1315,6 +1388,7 @@ setStatus('Ready - Add a novel URL to get started.');
       if (typeof done === 'function') done();
     });
   }
+  window.refreshLibrary = refresh;
 
   function provider() {
     const selected = state.providers.find(p => p.name === $('#provSel')?.value);

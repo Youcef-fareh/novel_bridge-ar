@@ -64,10 +64,11 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 ### 3. Translate a novel
 
 1. In **Library**, click **Add Novel** and either paste a supported novel URL or choose **Import EPUB** and select an EPUB file.
-2. For a website novel, start scraping and wait for its chapters to appear. Scraping also loads the novel's cover into the Library when the site provides one. Imported EPUB chapters are added to the library ready to translate.
-3. Select the chapters to translate.
-4. Choose a provider and model, then start translation.
-5. Watch each chapter's status. Retry failed chapters before building the book.
+2. Find novels in the bookshelf using search, status filters, or sorting. Select a novel to open its chapter workspace; use **Back to library** to return to the collection.
+3. For a website novel, start scraping and wait for its chapters to appear. Scraping also loads the novel's cover into the Library when the site provides one. Imported EPUB chapters are added to the library ready to translate.
+4. Select the chapters to translate.
+5. Choose a provider and model, then start translation.
+6. Watch each chapter's status. Retry failed chapters before building the book.
 
 EPUB import reads chapter text and reading order from the book. The original file is left unchanged; the translated EPUB is rebuilt by Novel Bridge AR, so original images and formatting are not carried over. DRM-protected or invalid EPUB files cannot be imported.
 

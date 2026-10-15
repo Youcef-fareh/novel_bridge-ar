@@ -85,6 +85,7 @@ class NovelBridgeWebChannel(QObject):
             "cover_url": novel.cover_url or "",
             "description": novel.description or "",
             "status": novel.status.value if hasattr(novel.status, "value") else str(novel.status),
+            "created_at": novel.created_at.isoformat(),
             "chapters": [
                 {
                     "id": chapter.id,
