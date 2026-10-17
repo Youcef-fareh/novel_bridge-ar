@@ -27,22 +27,14 @@ from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from backend.adapters.base import AdapterRegistry
-from backend.adapters.easternwordsmith import EasternWordsmithAdapter
-from backend.adapters.galaxynovels import GalaxyNovelsAdapter
-from backend.adapters.lightnovelpub import LightNovelPubAdapter
-from backend.adapters.novelfire import NovelFireAdapter
-from backend.adapters.novelphoenix import NovelPhoenixAdapter
-from backend.adapters.ranovel import RanovelAdapter
-from backend.adapters.wtrlab import WTRLabAdapter
-from backend.adapters.wuxiaspot import WuxiaSpotAdapter
+from backend.adapters import register_standard_adapters
 from backend.database import (
     create_novel, delete_novel, get_all_novels, get_chapters,
     get_novel, get_pending_translation_chapters, init_db, update_chapter, update_novel,
 )
-from backend.models import Chapter, ChapterStatus, Novel, NovelStatus
-from backend.pipeline import (
-    JobControl, run_epub_job, run_scrape_job, run_translation_job,
-)
+from backend.models import Chapter, ChapterStatus, JobType, Novel, NovelStatus
+from backend.pipeline import JobControl
+from backend.scheduler import scheduler
 from backend.translation import (
     PROVIDER_DISPLAY_NAMES,
     PROVIDER_MODELS,
@@ -737,8 +729,9 @@ class NovelDetailPanel(QWidget):
         novel_id = self._novel.id
 
         async def coro():
-            return await run_scrape_job(
+            return await scheduler.run_job(
                 novel_id,
+                JobType.scrape,
                 progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
@@ -768,11 +761,14 @@ class NovelDetailPanel(QWidget):
         request_cooldown_seconds = self.get_request_cooldown()
 
         async def coro():
-            return await run_translation_job(
+            return await scheduler.run_job(
                 novel_id,
-                provider_name=provider_name,
-                model_name=model_name,
-                request_cooldown_seconds=request_cooldown_seconds,
+                JobType.translate,
+                options={
+                    "provider_name": provider_name,
+                    "model_name": model_name,
+                    "request_cooldown_seconds": request_cooldown_seconds,
+                },
                 progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
@@ -799,12 +795,15 @@ class NovelDetailPanel(QWidget):
         request_cooldown_seconds = self.get_request_cooldown()
 
         async def coro():
-            return await run_translation_job(
+            return await scheduler.run_job(
                 novel_id,
-                chapter_ids=chapter_ids,
-                provider_name=provider_name,
-                model_name=model_name,
-                request_cooldown_seconds=request_cooldown_seconds,
+                JobType.translate,
+                options={
+                    "chapter_ids": chapter_ids,
+                    "provider_name": provider_name,
+                    "model_name": model_name,
+                    "request_cooldown_seconds": request_cooldown_seconds,
+                },
                 progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
                 job_control=job_ctrl,
             )
@@ -859,11 +858,14 @@ class NovelDetailPanel(QWidget):
         novel_id = self._novel.id
 
         async def coro():
-            job, path = await run_epub_job(
+            job = await scheduler.run_job(
                 novel_id,
+                JobType.build_epub,
                 progress_cb=lambda d, t, m: self.progress_requested.emit(d, t, m),
             )
-            return str(path)
+            if not job.output_path:
+                raise RuntimeError(f"EPUB job {job.id} completed without an output path")
+            return job.output_path
 
         worker = AsyncWorker(coro)
         worker.signals.finished.connect(self._on_epub_done)
@@ -1273,19 +1275,23 @@ class MainWindow(QMainWindow):
                     len(novels),
                     f"Translating {novel.title} ({len(pending)} chapter(s))…",
                 )
-                await run_translation_job(
+                await scheduler.run_job(
                     novel.id,
-                    chapter_ids=[chapter.id for chapter in pending],
-                    provider_name=provider_name,
-                    model_name=model_name,
-                    request_cooldown_seconds=request_cooldown,
+                    JobType.translate,
+                    options={
+                        "chapter_ids": [chapter.id for chapter in pending],
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "request_cooldown_seconds": request_cooldown,
+                    },
                     job_control=job_control,
                     progress_cb=lambda _done, _total, message: panel.progress_requested.emit(
                         completed, len(novels), f"{novel.title}: {message}"
                     ),
                 )
-                await run_epub_job(
+                await scheduler.run_job(
                     novel.id,
+                    JobType.build_epub,
                     progress_cb=lambda _done, _total, message: panel.progress_requested.emit(
                         completed, len(novels), f"{novel.title}: {message}"
                     ),
@@ -1333,15 +1339,9 @@ def load_stylesheet() -> str:
 def run_app() -> None:
     # Initialise database + register adapters before Qt starts
     init_db()
-    AdapterRegistry.register(EasternWordsmithAdapter())
-    AdapterRegistry.register(NovelFireAdapter())
-    AdapterRegistry.register(NovelPhoenixAdapter())
-    AdapterRegistry.register(GalaxyNovelsAdapter())
-    AdapterRegistry.register(LightNovelPubAdapter())
-    AdapterRegistry.register(RanovelAdapter())
-    AdapterRegistry.register(WTRLabAdapter())
-    AdapterRegistry.register(WuxiaSpotAdapter())
+    register_standard_adapters()
     load_custom_adapters()
+    scheduler.start()
 
     # High-DPI support
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -1349,6 +1349,7 @@ def run_app() -> None:
     )
 
     app = QApplication(sys.argv)
+    app.aboutToQuit.connect(lambda: scheduler.stop(timeout=30))
     app.setApplicationName("NovelBridge")
     app.setOrganizationName("NovelBridge")
 

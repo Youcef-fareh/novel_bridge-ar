@@ -60,36 +60,33 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      # ── 3. Install core dependencies (required for the build) ──────────────
+      # ── 3. Install application dependencies ────────────────────────────────
       - name: Install core dependencies
         run: |
-          python -m pip install --upgrade pip wheel setuptools
-          pip install pyinstaller
-          pip install "PyQt6>=6.7.0" "PyQt6-WebEngine>=6.7.0"
-          pip install httpx[http2]>=0.27.0
-          pip install selectolax>=0.3.17 beautifulsoup4>=4.12.0 lxml>=5.2.0
-          pip install fastapi>=0.111.0 "uvicorn[standard]>=0.30.0"
-          pip install sqlmodel>=0.0.19
-          pip install python-dotenv>=1.0.0 aiofiles>=23.2.1 Pillow>=10.3.0 tenacity>=8.3.0
-          pip install ebooklib>=0.18
-          pip install groq>=0.9.0
-          pip install google-genai>=0.1.0
-          pip install "google-api-python-client>=2.149.0" "google-auth-httplib2>=0.2.0" "google-auth-oauthlib>=1.2.1"
-          pip install playwright>=1.45.0
+          python -m pip install --upgrade pip wheel setuptools pyinstaller
+          python -m pip install -r requirements.txt
 
-      # Install Chromium inside the Playwright package so PyInstaller can
-      # collect it into the Windows application bundle.
-      - name: Install Playwright Chromium
+      # Keep Chromium outside the PyInstaller tree. The headless shell is enough
+      # for the app's Chromium launch(headless=True) scraping paths.
+      - name: Build optional Playwright browser pack
+        id: browser-pack
         env:
-          PLAYWRIGHT_BROWSERS_PATH: "0"
-        run: python -m playwright install chromium
-
-      # ── 4. Install optional / harder-to-build packages ─────────────────────
-      #    curl-cffi ships pre-built wheels for Windows, but if it fails
-      #    the build continues (httpx alone is enough for most scrapers).
-      - name: Install optional packages
-        run: pip install curl-cffi>=0.7.0
-        continue-on-error: true
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}\novelbridge-playwright-browsers
+        shell: pwsh
+        run: |
+          python -m playwright install --only-shell chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $browserRoot = $env:PLAYWRIGHT_BROWSERS_PATH
+          if (!(Test-Path -LiteralPath $browserRoot)) {
+            throw "Playwright did not create the browser cache at $browserRoot"
+          }
+          New-Item -ItemType Directory -Path "installer\Output" -Force | Out-Null
+          $browserPack = "installer\Output\NovelBridgeAR_BrowserPack_$env:APP_VERSION.zip"
+          Compress-Archive -Path (Join-Path $browserRoot "*") `
+            -DestinationPath $browserPack -CompressionLevel Optimal
+          "path=$browserPack" >> $env:GITHUB_OUTPUT
+          $packSize = (Get-Item -LiteralPath $browserPack).Length / 1MB
+          Write-Host ("Optional Chromium headless-shell pack: {0:F1} MB" -f $packSize)
 
       # ── 5. Confirm what is installed ───────────────────────────────────────
       - name: Show installed packages
@@ -97,8 +94,6 @@ jobs:
 
       # ── 6. Build with PyInstaller ──────────────────────────────────────────
       - name: Build executable (PyInstaller)
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: "0"
         run: pyinstaller novel_bridge.spec --noconfirm --log-level INFO
 
       # ── 7. Verify the exe was produced ────────────────────────────────────
@@ -192,7 +187,9 @@ jobs:
       - name: Write installer checksums
         shell: pwsh
         run: |
-          Get-ChildItem "installer\Output" -Filter "*.exe" | ForEach-Object {
+          Get-ChildItem "installer\Output" -File |
+            Where-Object { $_.Extension -in @(".exe", ".zip") } |
+            ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
             $text = "$hash  $($_.Name)"
             [System.IO.File]::WriteAllText(
@@ -211,7 +208,20 @@ jobs:
             exit 1
           }
           $size = (Get-Item "installer\Output\NovelBridgeAR_Setup.exe").Length / 1MB
+          $browserSize = (Get-Item "installer\Output\NovelBridgeAR_BrowserPack_$env:APP_VERSION.zip").Length / 1MB
+          $bundleSize = (Get-ChildItem "dist\NovelBridgeAR" -Recurse -File |
+            Measure-Object -Property Length -Sum).Sum / 1MB
           Write-Host ("✅ Installer found — {0:F1} MB" -f $size)
+          Write-Host ("Application bundle: {0:F1} MB; optional browser pack: {1:F1} MB" -f $bundleSize, $browserSize)
+          "### Windows release package sizes" >> $env:GITHUB_STEP_SUMMARY
+          "| Asset | Size (MiB) |`n| --- | ---: |`n| Setup installer | {0:F1} |`n| PyInstaller application bundle | {1:F1} |`n| Optional Chromium browser pack | {2:F1} |" -f $size, $bundleSize, $browserSize >> $env:GITHUB_STEP_SUMMARY
+          "Largest application bundle files:" >> $env:GITHUB_STEP_SUMMARY
+          Get-ChildItem "dist\NovelBridgeAR" -Recurse -File |
+            Sort-Object Length -Descending |
+            Select-Object -First 10 |
+            ForEach-Object {
+              "| $($_.FullName.Substring((Resolve-Path 'dist\NovelBridgeAR').Path.Length + 1)) | $([math]::Round($_.Length / 1MB, 1)) MiB |" >> $env:GITHUB_STEP_SUMMARY
+            }
         shell: pwsh
 
       # ── 11. Upload installer as workflow artifact (always, for debugging) ───
@@ -231,7 +241,10 @@ jobs:
           $files = @(
             "installer/Output/NovelBridgeAR_Setup.exe",
             "installer/Output/NovelBridgeAR_Setup.exe.sha256",
-            "installer/Output/NovelBridgeAR_Portable.zip"
+            "installer/Output/NovelBridgeAR_Portable.zip",
+            "installer/Output/NovelBridgeAR_Portable.zip.sha256",
+            "installer/Output/NovelBridgeAR_BrowserPack_${env:APP_VERSION}.zip",
+            "installer/Output/NovelBridgeAR_BrowserPack_${env:APP_VERSION}.zip.sha256"
           )
           $files += Get-ChildItem "installer/Output" -Filter "NovelBridgeAR_Update_*.exe" |
             ForEach-Object { $_.FullName.Replace("$PWD\", "").Replace("\", "/") }
@@ -257,8 +270,9 @@ jobs:
             2. Run the installer and follow the wizard
             3. Launch **NovelBridge AR** from the Start Menu or Desktop shortcut
 
+            Browser-based scraping is optional. To enable it, download **NovelBridgeAR_BrowserPack_${{ env.APP_VERSION }}.zip**, verify its SHA-256 checksum, and extract its contents into `%LOCALAPPDATA%\ms-playwright`. Install the browser pack from the matching release again after updating the app. Ordinary HTTP-based scraping and the GUI do not require this pack.
+
             Existing installations receive a smaller incremental update when one is available. The full installer remains available as a fallback.
 
             ### 📋 What's new
             See the [commit history](https://github.com/${{ github.repository }}/commits/${{ env.RELEASE_TAG }}) for changes in this release.
-

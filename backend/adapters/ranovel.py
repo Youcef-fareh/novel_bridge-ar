@@ -217,10 +217,23 @@ def _extract_refs(html: str, page_url: str, seen: set[str], start_index: int) ->
     return refs
 
 
-class RanovelAdapter(SiteAdapter):
+from backend.adapters.templates.wordpress import WordpressAdapter
+
+
+class RanovelAdapter(WordpressAdapter):
     site_id = _SITE_ID
+    base_url = _BASE
+    version = "2"
+    tier = "legacy"
     source_language = "English"
     scraping_method = "nodriver (Cloudflare bypass)"
+
+    novel_title_selectors = [".post-title", "h1.entry-title", "h1"]
+    novel_author_selectors = [".author-content a", ".post-content_item .summary-content a", ".post-content_item"]
+    novel_cover_selectors = [".summary_image img", ".summary_image a img", ".profile-manga .summary_image img"]
+    novel_description_selectors = [".description-summary .summary__content", ".description-summary", ".summary_content"]
+    chapter_list_selectors = ["#manga-chapters-holder .wp-manga-chapter a"]
+    chapter_body_selectors = [".reading-content", ".text-left", ".entry-content", "#chapter-container"]
 
     def can_handle(self, url: str) -> bool:
         return "ranovel.com" in url.lower()

@@ -10,7 +10,7 @@ from typing import List
 from backend.models import GlossaryRule
 
 
-def build_system_prompt(glossary: List[GlossaryRule]) -> str:
+def build_system_prompt(glossary: List[GlossaryRule], context: Optional[str] = None) -> str:
     """Build the system prompt with glossary rules injected."""
     glossary_block = ""
     if glossary:
@@ -26,6 +26,14 @@ character (e.g. a shortened form, honorific + name, or romanization
 variant), still map it to the glossaried Arabic form rather than
 transliterating it separately.
 """
+
+    continuity_block = ""
+    if context:
+        continuity_block = (
+            "\n\nCONTINUITY CONTEXT (reference only; do not translate or repeat it):\n"
+            f"{context[-500:]}\n"
+            "Use this prior translated passage to keep names, voices, and references consistent."
+        )
 
     return (
         "You are an expert literary translator specializing in Arabic translation of "
@@ -87,6 +95,7 @@ transliterating it separately.
         "Arabic phonetic rendering and use it consistently for the rest of the chapter "
         "rather than alternating between guesses."
         + glossary_block
+        + continuity_block
     )
 
 
@@ -142,6 +151,7 @@ class TranslationProvider(ABC):
         text: str,
         glossary: List[GlossaryRule],
         model: Optional[str] = None,
+        context: Optional[str] = None,
     ) -> str:
         """
         Translate a chapter of text, applying glossary rules.

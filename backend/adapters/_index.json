@@ -1,0 +1,110 @@
+{
+  "version": "1.0",
+  "total_sources": 8,
+  "adapters": [
+    {
+      "site_id": "cenele_com",
+      "class_name": "CeneleComAdapter",
+      "module": "backend.adapters.custom.cenele_com_adapter",
+      "file": "backend/adapters/custom/cenele_com_adapter.py",
+      "base_url": "",
+      "template": "Custom",
+      "version": "1",
+      "tier": "legacy",
+      "selectors_hash": "n/a",
+      "source_language": "Unknown",
+      "scraping_method": "Unknown"
+    },
+    {
+      "site_id": "easternwordsmith",
+      "class_name": "EasternWordsmithAdapter",
+      "module": "backend.adapters.easternwordsmith",
+      "file": "backend/adapters/easternwordsmith.py",
+      "base_url": "",
+      "template": "Custom",
+      "version": "1",
+      "tier": "legacy",
+      "selectors_hash": "n/a",
+      "source_language": "English",
+      "scraping_method": "nodriver (Cloudflare bypass)"
+    },
+    {
+      "site_id": "galaxynovels",
+      "class_name": "GalaxyNovelsAdapter",
+      "module": "backend.adapters.galaxynovels",
+      "file": "backend/adapters/galaxynovels.py",
+      "base_url": "",
+      "template": "Custom",
+      "version": "1",
+      "tier": "legacy",
+      "selectors_hash": "n/a",
+      "source_language": "Unknown",
+      "scraping_method": "Unknown"
+    },
+    {
+      "site_id": "novelfire",
+      "class_name": "NovelFireAdapter",
+      "module": "backend.adapters.novelfire",
+      "file": "backend/adapters/novelfire.py",
+      "base_url": "https://novelfire.net",
+      "template": "SoupAdapter",
+      "version": "2",
+      "tier": "legacy",
+      "selectors_hash": "89f7694bb2f7",
+      "source_language": "Unknown",
+      "scraping_method": "Unknown"
+    },
+    {
+      "site_id": "novelphoenix",
+      "class_name": "NovelPhoenixAdapter",
+      "module": "backend.adapters.novelphoenix",
+      "file": "backend/adapters/novelphoenix.py",
+      "base_url": "",
+      "template": "Custom",
+      "version": "1",
+      "tier": "legacy",
+      "selectors_hash": "n/a",
+      "source_language": "Unknown",
+      "scraping_method": "Unknown"
+    },
+    {
+      "site_id": "ranovel",
+      "class_name": "RanovelAdapter",
+      "module": "backend.adapters.ranovel",
+      "file": "backend/adapters/ranovel.py",
+      "base_url": "https://ranovel.com",
+      "template": "SoupAdapter",
+      "version": "2",
+      "tier": "legacy",
+      "selectors_hash": "8ecc00ca80d3",
+      "source_language": "English",
+      "scraping_method": "nodriver (Cloudflare bypass)"
+    },
+    {
+      "site_id": "wtrlab",
+      "class_name": "WTRLabAdapter",
+      "module": "backend.adapters.wtrlab",
+      "file": "backend/adapters/wtrlab.py",
+      "base_url": "",
+      "template": "Custom",
+      "version": "1",
+      "tier": "legacy",
+      "selectors_hash": "n/a",
+      "source_language": "Unknown",
+      "scraping_method": "Unknown"
+    },
+    {
+      "site_id": "wuxiaspot",
+      "class_name": "WuxiaSpotAdapter",
+      "module": "backend.adapters.wuxiaspot",
+      "file": "backend/adapters/wuxiaspot.py",
+      "base_url": "",
+      "template": "Custom",
+      "version": "1",
+      "tier": "legacy",
+      "selectors_hash": "n/a",
+      "source_language": "English",
+      "scraping_method": "curl"
+    }
+  ]
+}

@@ -936,10 +936,10 @@ function refreshControls(){
  const el=id=>$('#'+id);
  if(el('selCount'))el('selCount').textContent=`${state.checked.size} selected`;
  el('btnScrape').disabled=job;
- el('btnTransAll').disabled=job||c.scraped===0;
- el('btnTransSel').disabled=job||!chkTranslatable;
- el('btnDelTrans').disabled=job||!chkTrans;
- el('btnEpub').disabled=job||c.translated===0;
+ el('btnTransAll').disabled=job||nv.isNativeArabic||c.scraped===0;
+ el('btnTransSel').disabled=job||nv.isNativeArabic||!chkTranslatable;
+ el('btnDelTrans').disabled=job||nv.isNativeArabic||!chkTrans;
+ el('btnEpub').disabled=job||(nv.isNativeArabic?c.scraped===0:c.translated===0);
  el('btnDrive').disabled=job;
  el('btnDelNovel').disabled=job;
 }
@@ -1003,8 +1003,8 @@ function matchAdapter(url){
  let host='';try{host=new URL(url).hostname}catch(e){return null}
  return state.adapters.find(a=>{
   const h=host.replace(/^www\./,'').toLowerCase();
-  const site=String(a.site).toLowerCase();
-  return h===site||h.endsWith('.'+site)||h.startsWith(site+'.');
+ const sites=[a.site,...(a.baseUrls||[]).map(base=>{try{return new URL(base).hostname.replace(/^www\./,'').toLowerCase()}catch(e){return ''}})];
+ return sites.some(site=>{site=String(site||'').toLowerCase();return site&&(h===site||h.endsWith('.'+site))});
 })||null;
 }
 $('#btnAddNovel').onclick=()=>{
@@ -1356,6 +1356,7 @@ setStatus('Ready - Add a novel URL to get started.');
     state.novels = (snapshot.novels || []).map(n => ({
       id: String(n.id), title: n.title, author: n.author || 'Unknown author',
       site: n.source_site, url: n.source_url, cover: n.cover_url || '',
+      isNativeArabic: !!n.is_native_arabic,
       createdAt: n.created_at || '',
       chapters: (n.chapters || []).map(c => ({
         dbId: c.id, num: c.index + 1, title: c.title, status: c.status,
@@ -1371,7 +1372,9 @@ setStatus('Ready - Add a novel URL to get started.');
     }));
     state.adapters = (snapshot.adapters || []).map(a => ({
       site: a.site_id, cls: a.class_name, src: a.source,
-      lang: 'English', method: 'Configured', file: ''
+      baseUrls: a.base_urls || [],
+      lang: a.source_language || 'Unknown', isNativeArabic: !!a.is_native_arabic,
+      method: 'Configured', file: ''
     }));
     if (state.selectedId && !current()) {
       state.selectedId = null;

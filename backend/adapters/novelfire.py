@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 from typing import List
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote_plus, urljoin, urlparse
 
 try:
     from selectolax.parser import HTMLParser
@@ -16,7 +16,7 @@ except ImportError:
     _SELECTOLAX_AVAILABLE = False
     from bs4 import BeautifulSoup
 
-from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
+from backend.adapters.base import ChapterRef, NovelMeta, SearchResult, SiteAdapter
 from backend.adapters.fetcher import (
     fetch_html, parse_chapter_body, parse_cover_url, parse_links, parse_text
 )
@@ -36,43 +36,85 @@ def _split_selectors(value: str) -> list[str]:
     return [s.strip() for s in value.split(",") if s.strip()]
 
 
-class NovelFireAdapter(SiteAdapter):
+from backend.adapters.soup_template import SoupAdapter
+
+
+class NovelFireAdapter(SoupAdapter):
     site_id = _SITE_ID
+    base_url = _BASE
+    version = "2"
+    tier = "legacy"
+    can_search = True
+
+    novel_title_selectors = ["h1.novel-title", ".book-name h1", ".novel-info h1", "h1"]
+    novel_author_selectors = [".author", ".author-content a", ".novel-author .author-name"]
+    novel_cover_selectors = [".cover img", ".book-img img", ".novel-cover img", ".novel-info img"]
+    novel_description_selectors = [".content", ".summary", ".summary__content", ".novel-description"]
+    chapter_list_selectors = [".chapter-list li a", ".chapter-list a", ".chapter-item a", ".wp-manga-chapter a"]
+    chapter_body_selectors = ["#chapter-container", ".chapter-content", ".text-left"]
 
     def can_handle(self, url: str) -> bool:
         return "novelfire.net" in url or "novelfire.com" in url or "novelfire.docs" in url
 
+    async def search(self, query: str, limit: int = 20) -> list[SearchResult]:
+        from bs4 import BeautifulSoup
+
+        search_url = f"{_BASE}/search?keyword={quote_plus(query)}"
+        html = await fetch_html(search_url, _SITE_ID)
+        soup = BeautifulSoup(html, "lxml")
+        cards = soup.select(".novel-item, .novel-card, .book-item, .list-novel .item")
+        if not cards:
+            cards = soup.select('a[href*="/book/"], a[href*="/novel/"]')
+
+        results: list[SearchResult] = []
+        seen: set[str] = set()
+        for card in cards:
+            anchor = card if card.name == "a" else card.select_one("a[href]")
+            if not anchor:
+                continue
+            url = urljoin(_BASE, str(anchor.get("href", "")).strip())
+            host = (urlparse(url).hostname or "").lower()
+            if (
+                urlparse(url).scheme not in {"http", "https"}
+                or not (host == "novelfire.net" or host.endswith(".novelfire.net")
+                        or host == "novelfire.com" or host.endswith(".novelfire.com"))
+                or url in seen
+            ):
+                continue
+            image = card.select_one("img")
+            title = (
+                anchor.get_text(" ", strip=True)
+                or (str(image.get("alt", "")).strip() if image else "")
+                or str(anchor.get("title", "")).strip()
+            )
+            if not title:
+                continue
+            cover = None
+            if image:
+                for attribute in ("data-src", "data-original", "src"):
+                    value = image.get(attribute)
+                    if value:
+                        cover = urljoin(url, str(value))
+                        break
+            seen.add(url)
+            results.append(SearchResult(
+                title=title,
+                url=url,
+                source_site=self.site_id,
+                cover_url=cover,
+            ))
+            if len(results) >= max(1, min(limit, 50)):
+                break
+        return results
+
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
-        html = await fetch_html(novel_url, _SITE_ID)
-
-        title = parse_text(html, _split_selectors(_SEL.get("novel_title", "h1.novel-title, .book-name h1, .novel-info h1, h1"))) or "Unknown Title"
-        author = parse_text(html, _split_selectors(_SEL.get("novel_author", ".author, .author-content a, .novel-author .author-name")))
-        if author and author.lower().startswith("author:"):
-            author = author[7:].strip()
-
-        cover_url = parse_cover_url(
-            html,
-            _split_selectors(
-                _SEL.get(
-                    "novel_cover",
-                    ".cover img, .book-img img, .novel-cover img, .novel-info img",
-                )
-            ),
-            novel_url,
-        )
-
-        description = parse_text(html, _split_selectors(_SEL.get("novel_description", ".content, .summary, .summary__content, .novel-description")))
-        if description and description.lower().startswith("summary"):
-            description = description[7:].strip()
-
-        return NovelMeta(
-            title=title,
-            author=author,
-            cover_url=cover_url,
-            description=description,
-            source_url=novel_url,
-            source_site=_SITE_ID,
-        )
+        html = await fetch_html(novel_url, self.site_id)
+        meta = self.parse_novel_metadata(html, novel_url)
+        if meta.author and meta.author.lower().startswith("author:"):
+            meta.author = meta.author[7:].strip()
+        if meta.description and meta.description.lower().startswith("summary"):
+            meta.description = meta.description[7:].strip()
+        return meta
 
     async def get_chapter_list(self, novel_url: str) -> List[ChapterRef]:
         # If /chapters URL exists, check it; otherwise check novel page
@@ -144,11 +186,3 @@ class NovelFireAdapter(SiteAdapter):
             page += 1
 
         return refs
-
-    async def get_chapter_text(self, chapter_url: str) -> str:
-        html = await fetch_html(chapter_url, _SITE_ID)
-        selectors = _split_selectors(_SEL.get("chapter_text", "#chapter-container, .chapter-content, .text-left"))
-        text = parse_chapter_body(html, selectors)
-        if not text:
-            text = parse_text(html, ["#chapter-container", ".chapter-content", "article", "main"])
-        return text or ""

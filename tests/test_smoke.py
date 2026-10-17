@@ -180,7 +180,6 @@ def test_gemini_uses_relaxed_safety_and_candidate_text():
 def test_adapter_registry():
     from backend.adapters.base import AdapterRegistry
     from backend.adapters.galaxynovels import GalaxyNovelsAdapter
-    from backend.adapters.lightnovelpub import LightNovelPubAdapter
     from backend.adapters.novelfire import NovelFireAdapter
     from backend.adapters.novelphoenix import NovelPhoenixAdapter
     from backend.adapters.ranovel import RanovelAdapter
@@ -190,7 +189,6 @@ def test_adapter_registry():
     AdapterRegistry.register(WTRLabAdapter())
     AdapterRegistry.register(NovelPhoenixAdapter())
     AdapterRegistry.register(GalaxyNovelsAdapter())
-    AdapterRegistry.register(LightNovelPubAdapter())
     AdapterRegistry.register(RanovelAdapter())
 
     nf = AdapterRegistry.find("https://novelfire.net/book/test")
@@ -210,10 +208,6 @@ def test_adapter_registry():
     gn = AdapterRegistry.find("https://galaxynovels.com/novel/unscientific-beast-taming/")
     assert gn is not None
     assert gn.site_id == "galaxynovels"
-
-    lnp = AdapterRegistry.find("https://lightnovelpub.me/book/example")
-    assert lnp is not None
-    assert lnp.site_id == "lightnovelpub"
 
     ranovel = AdapterRegistry.find("https://ranovel.com/novel/example/")
     assert ranovel is not None
@@ -425,15 +419,6 @@ async def test_galaxy_expands_initial_chapter_batch(monkeypatch):
     assert refs[-1].title == "Chapter 61"
 
 
-def test_lightnovelpub_numbered_chapter_pages():
-    from backend.adapters.lightnovelpub import _chapter_page_url
-
-    base = "https://lightnovelpub.me/book/example/"
-    assert _chapter_page_url(base, 1) == "https://lightnovelpub.me/book/example"
-    assert _chapter_page_url(base, 2) == "https://novellive.app/book/example/2"
-    assert _chapter_page_url(base + "2", 3) == "https://novellive.app/book/example/3"
-
-
 @pytest.mark.asyncio
 async def test_nodriver_starts_with_no_sandbox(monkeypatch, tmp_path):
     import asyncio
@@ -517,18 +502,12 @@ async def test_nodriver_starts_with_no_sandbox(monkeypatch, tmp_path):
     assert not shutdown_output.exists()
 
 
-def test_novellive_and_wtrlab_urls_are_case_insensitive():
+def test_wtrlab_urls_are_case_insensitive():
     from backend.adapters.base import AdapterRegistry
-    from backend.adapters.lightnovelpub import LightNovelPubAdapter
     from backend.adapters.wtrlab import WTRLabAdapter
 
-    lnp = LightNovelPubAdapter()
     wtr = WTRLabAdapter()
-    AdapterRegistry.register(lnp)
     AdapterRegistry.register(wtr)
-
-    assert lnp.can_handle("https://NOVELLIVE.APP/book/weakest-beast-tamer-gets-all-sss-dragons/chapter-1-1-beast-tamer-ren-patinder")
-    assert AdapterRegistry.find("https://NOVELLIVE.APP/book/weakest-beast-tamer-gets-all-sss-dragons/chapter-1-1-beast-tamer-ren-patinder") is lnp
 
     assert wtr.can_handle("https://WTR-LAB.com/en/novel/8937/multifunctional-sword-cultivation-starts-from-taxi?tab=toc")
     assert AdapterRegistry.find("https://WTR-LAB.com/en/novel/8937/multifunctional-sword-cultivation-starts-from-taxi?tab=toc") is wtr
@@ -888,16 +867,23 @@ def test_gemini_provider_uses_instance_key(monkeypatch):
     class FakeResponse:
         text = "translated"
 
-    class FakeModels:
+    class FakeChat:
         @staticmethod
-        def generate_content(**kwargs):
+        def send_message(message):
+            captured["message"] = message
             return FakeResponse()
+
+    class FakeChats:
+        @staticmethod
+        def create(**kwargs):
+            captured["chat_config"] = kwargs
+            return FakeChat()
 
     class FakeClient:
         def __init__(self, api_key):
             captured["api_key"] = api_key
 
-        models = FakeModels()
+        chats = FakeChats()
 
     fake_google = types.ModuleType("google")
     fake_genai = types.ModuleType("google.genai")
@@ -926,6 +912,8 @@ def test_gemini_provider_uses_instance_key(monkeypatch):
 
     assert result == "translated"
     assert captured["api_key"] == "fresh-key"
+    assert captured["chat_config"]["model"] == "gemini-2.5-flash"
+    assert captured["message"] == "text"
 
 
 def test_grok_provider(monkeypatch):

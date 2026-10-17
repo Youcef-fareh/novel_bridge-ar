@@ -123,11 +123,12 @@ class GeminiProvider(TranslationProvider):
         text: str,
         glossary: List[GlossaryRule],
         model: Optional[str] = None,
+        context: Optional[str] = None,
     ) -> str:
         if not self.is_available():
             raise RuntimeError("Gemini API key not configured. Please set GEMINI_API_KEY in your .env or API Keys settings.")
 
-        system_prompt = build_system_prompt(glossary)
+        system_prompt = build_system_prompt(glossary, context)
         model_to_use = model or self._model or "gemini-2.5-flash"
 
         # Run the blocking genai call in a thread pool
@@ -146,14 +147,12 @@ class GeminiProvider(TranslationProvider):
         from google.genai import types
 
         client = self._get_client()
-        response = client.models.generate_content(
+        chat = client.chats.create(
             model=model,
-            contents=text,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 safety_settings=_build_safety_settings(types),
             ),
         )
+        response = chat.send_message(text)
         return _response_text(response)
-
-

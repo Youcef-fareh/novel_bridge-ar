@@ -54,11 +54,12 @@ class GrokProvider(TranslationProvider):
         text: str,
         glossary: List[GlossaryRule],
         model: Optional[str] = None,
+        context: Optional[str] = None,
     ) -> str:
         if not self.is_available():
             raise RuntimeError("Grok API key not configured. Please set XAI_API_KEY in your .env or API Keys settings.")
 
-        system_prompt = build_system_prompt(glossary)
+        system_prompt = build_system_prompt(glossary, context)
         model_to_use = model or self._model or DEFAULT_MODEL
         result = await asyncio.get_event_loop().run_in_executor(
             None, self._call_api, system_prompt, text, model_to_use

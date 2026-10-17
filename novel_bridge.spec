@@ -8,8 +8,7 @@
 # Output lands in:  dist/NovelBridgeAR/NovelBridgeAR.exe
 # ─────────────────────────────────────────────────────────────────────────────
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files
-import sys, os
+from PyInstaller.utils.hooks import collect_data_files
 
 # ── Collect data files that packages ship as non-Python assets ──────────────
 datas = []
@@ -27,13 +26,12 @@ datas += [("icon.ico", ".")]
 datas += [("config/sites.json", "config")]
 datas += [("config/glossary.json", "config")]
 
-# Collect all data files from known heavy packages
-for pkg in ("PyQt6", "sqlmodel", "uvicorn", "fastapi", "selectolax", "playwright"):
-    try:
-        d, b, h = collect_all(pkg)
-        datas     += d
-    except Exception:
-        pass
+# Playwright needs its Node driver and JavaScript files at runtime. Browser
+# binaries are distributed separately and must not be folded into this bundle.
+datas += collect_data_files(
+    "playwright",
+    excludes=["**/.local-browsers/**", "**/ms-playwright/**"],
+)
 
 # ── Hidden imports that PyInstaller's static analysis may miss ────────────
 hidden_imports = [
@@ -73,11 +71,10 @@ hidden_imports = [
     # Utilities
     "dotenv",
     "aiofiles",
-    "PIL",
-    "tenacity",
     # AI providers
     "google.genai",
     "groq",
+    "openai",
 ]
 
 block_cipher = None
@@ -104,6 +101,22 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
+# The app only builds the Drive v3 API; keep its static discovery document.
+# Qt's DevTools debug frontend is not used by the application and is large.
+filtered_datas = []
+for destination, source, typecode in a.datas:
+    normalized_destination = destination.replace("\\", "/")
+    is_unused_google_discovery_doc = (
+        normalized_destination.startswith("googleapiclient/discovery_cache/documents/")
+        and normalized_destination != "googleapiclient/discovery_cache/documents/drive.v3.json"
+    )
+    is_unused_webengine_devtools_debug = normalized_destination.endswith(
+        "qtwebengine_devtools_resources.debug.pak"
+    )
+    if not is_unused_google_discovery_doc and not is_unused_webengine_devtools_debug:
+        filtered_datas.append((destination, source, typecode))
+a.datas = filtered_datas
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 

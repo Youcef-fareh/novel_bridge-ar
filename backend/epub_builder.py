@@ -13,6 +13,7 @@ from html import escape
 
 from ebooklib import epub
 
+from backend.config import get_config
 from backend.models import Chapter, Novel
 
 _OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "output"))
@@ -29,6 +30,13 @@ body {
     line-height: 1.8;
     margin: 1em 1.5em;
     color: #1a1a1a;
+}
+
+.chapter-image {
+    display: block;
+    height: auto;
+    margin: 1em auto;
+    max-width: 100%;
 }
 
 h1, h2, h3 {
@@ -112,12 +120,22 @@ def _text_to_html_paragraphs(text: str) -> str:
     return "\n".join(f"<p>{escape(p.replace(chr(10), ' '))}</p>" for p in paragraphs)
 
 
-def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path] = None) -> Path:
+def build_epub(
+    novel: Novel,
+    chapters: List[Chapter],
+    output_dir: Optional[Path] = None,
+    *,
+    volume: Optional[int] = None,
+    language: str = "ar",
+    chapter_images: Optional[dict[int, list]] = None,
+) -> Path:
     """
     Build an EPUB from a novel and its translated chapters.
     Returns the path to the generated .epub file.
     Only chapters with status=translated and non-empty translated_text are included.
     """
+    if language != "ar":
+        raise ValueError("The EPUB template currently supports Arabic only.")
     out_dir = output_dir or _OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -126,7 +144,7 @@ def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path]
     # ── Metadata ──────────────────────────────────────────────────────────────
     book.set_identifier(f"novelbridge-{novel.id}-{novel.source_site}")
     book.set_title(novel.title)
-    book.set_language("ar")
+    book.set_language(language)
     if novel.author:
         book.add_author(novel.author)
 
@@ -175,6 +193,9 @@ def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path]
 
     # ── Chapters ─────────────────────────────────────────────────────────────
     epub_chapters: list[epub.EpubHtml] = [cover_page]
+    chapter_images = chapter_images or {}
+    image_root = (get_config().paths.data_dir / "chapter-images").resolve()
+    allowed_image_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
     
     # Check if this novel is from a native Arabic source
     is_native_ar = False
@@ -187,12 +208,32 @@ def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path]
     # Gather chapters to include: translated_text if available, else raw_text for native Arabic novels
     valid_chapters = []
     for c in chapters:
+        if volume is not None and (c.volume_serial or c.index // 100 + 1) != volume:
+            continue
         text = c.translated_text if (c.translated_text and c.translated_text.strip()) else (c.raw_text if is_native_ar else None)
         if text and text.strip():
             valid_chapters.append((c, text))
 
     for chapter, text in sorted(valid_chapters, key=lambda x: x[0].index):
         body_html = _text_to_html_paragraphs(text)
+        for position, image in enumerate(chapter_images.get(chapter.id, [])):
+            image_path = Path(image.file_path).resolve()
+            if not image_path.is_relative_to(image_root):
+                raise ValueError("Chapter image path is outside the image store.")
+            if image.media_type not in allowed_image_types:
+                raise ValueError(f"Unsupported chapter image media type: {image.media_type}")
+            filename = f"chapter_{chapter.id}_{position}{image_path.suffix.lower()}"
+            image_item = epub.EpubItem(
+                uid=f"chapter_image_{chapter.id}_{position}",
+                file_name=f"images/{filename}",
+                media_type=image.media_type,
+                content=image_path.read_bytes(),
+            )
+            book.add_item(image_item)
+            body_html += (
+                f'<img class="chapter-image" src="../images/{escape(filename)}" '
+                f'alt="{escape(image.alt_text or "")}" />'
+            )
         chapter_content = _CHAPTER_HTML_TEMPLATE.format(
             chapter_title=escape(chapter.title),
             body=body_html,
@@ -218,6 +259,8 @@ def build_epub(novel: Novel, chapters: List[Chapter], output_dir: Optional[Path]
 
     # ── Write file ────────────────────────────────────────────────────────────
     safe_title = "".join(c for c in novel.title if c.isalnum() or c in " _-").rstrip()
-    output_path = out_dir / f"{safe_title or f'novel_{novel.id}'}.epub"
+    volume_suffix = f".Vol_{volume:03d}" if volume is not None else ""
+    language_suffix = f".{language}" if language else ""
+    output_path = out_dir / f"{safe_title or f'novel_{novel.id}'}{volume_suffix}{language_suffix}.epub"
     epub.write_epub(str(output_path), book)
     return output_path

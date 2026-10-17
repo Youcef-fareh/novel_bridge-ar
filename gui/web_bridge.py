@@ -25,8 +25,9 @@ from backend.database import (
     get_novel,
     update_novel,
 )
-from backend.models import ChapterStatus
-from backend.pipeline import JobControl, run_epub_job, run_scrape_job, run_translation_job
+from backend.models import ChapterStatus, JobType
+from backend.pipeline import JobControl
+from backend.scheduler import scheduler
 from backend.translation import GeminiProvider, GroqProvider, GrokProvider, OrcaRouterProvider, TokenRouterProvider
 from gui.widgets.api_keys import ENV_FILE, _PROVIDER_GROUPS, _read_env_file, _write_env_file
 
@@ -76,12 +77,16 @@ class NovelBridgeWebChannel(QObject):
     @staticmethod
     def _novel_data(novel) -> dict:
         chapters = get_chapters(novel.id)
+        adapter = AdapterRegistry._adapters.get(novel.source_site)
         return {
             "id": novel.id,
             "title": novel.title,
             "author": novel.author or "",
             "source_url": novel.source_url,
             "source_site": novel.source_site,
+            "is_native_arabic": bool(
+                adapter and getattr(adapter, "is_native_arabic", False)
+            ),
             "cover_url": novel.cover_url or "",
             "description": novel.description or "",
             "status": novel.status.value if hasattr(novel.status, "value") else str(novel.status),
@@ -141,7 +146,14 @@ class NovelBridgeWebChannel(QObject):
             ],
             "providers": self._provider_data(),
             "adapters": [
-                {"site_id": item["site_id"], "class_name": item["class"], "source": "Built-in"}
+                {
+                    "site_id": item["site_id"],
+                    "class_name": item["class"],
+                    "source": "Built-in",
+                    "base_urls": item["base_urls"],
+                    "source_language": item["source_language"],
+                    "is_native_arabic": item["is_native_arabic"],
+                }
                 for item in AdapterRegistry.list_all()
                 if item["site_id"] != "galaxynovels"
             ],
@@ -236,11 +248,14 @@ class NovelBridgeWebChannel(QObject):
         control = self._job_control
 
         async def work():
-            return await run_translation_job(
+            return await scheduler.run_job(
                 novel_id,
-                chapter_ids=chapter_ids,
-                provider_name=provider or None,
-                model_name=model or None,
+                JobType.translate,
+                options={
+                    "chapter_ids": chapter_ids,
+                    "provider_name": provider or None,
+                    "model_name": model or None,
+                },
                 progress_cb=self._progress,
                 job_control=control,
             )
@@ -318,15 +333,23 @@ class NovelBridgeWebChannel(QObject):
                 if chapter_limit > 0:
                     pending = pending[:chapter_limit]
                 if pending:
-                    await run_translation_job(
+                    await scheduler.run_job(
                         novel_id,
-                        chapter_ids=[chapter.id for chapter in pending],
-                        provider_name=provider or None,
-                        model_name=model or None,
+                        JobType.translate,
+                        options={
+                            "chapter_ids": [chapter.id for chapter in pending],
+                            "provider_name": provider or None,
+                            "model_name": model or None,
+                        },
                         progress_cb=self._progress,
                         job_control=control,
                     )
-                    await run_epub_job(novel_id, progress_cb=self._progress)
+                    await scheduler.run_job(
+                        novel_id,
+                        JobType.build_epub,
+                        progress_cb=self._progress,
+                        job_control=control,
+                    )
             return True
 
         worker = _AsyncWorker(work)
@@ -346,16 +369,29 @@ class NovelBridgeWebChannel(QObject):
 
         async def work():
             if kind == "scrape":
-                return await run_scrape_job(novel_id, progress_cb=self._progress, job_control=control)
-            if kind == "translate":
-                return await run_translation_job(
+                return await scheduler.run_job(
                     novel_id,
-                    provider_name=provider or None,
-                    model_name=model or None,
+                    JobType.scrape,
                     progress_cb=self._progress,
                     job_control=control,
                 )
-            return await run_epub_job(novel_id, progress_cb=self._progress)
+            if kind == "translate":
+                return await scheduler.run_job(
+                    novel_id,
+                    JobType.translate,
+                    options={
+                        "provider_name": provider or None,
+                        "model_name": model or None,
+                    },
+                    progress_cb=self._progress,
+                    job_control=control,
+                )
+            return await scheduler.run_job(
+                novel_id,
+                JobType.build_epub,
+                progress_cb=self._progress,
+                job_control=control,
+            )
 
         worker = _AsyncWorker(work)
         worker.signals.finished.connect(lambda _result, k=kind: self._job_done(k))

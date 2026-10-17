@@ -74,6 +74,7 @@ class OrcaRouterProvider(TranslationProvider):
         text: str,
         glossary: List[GlossaryRule],
         model: Optional[str] = None,
+        context: Optional[str] = None,
     ) -> str:
         if not self.is_available():
             raise RuntimeError(
@@ -81,7 +82,7 @@ class OrcaRouterProvider(TranslationProvider):
                 "Please set ORCAROUTER_API_KEY in your .env or API Keys settings."
             )
 
-        system_prompt = build_system_prompt(glossary)
+        system_prompt = build_system_prompt(glossary, context)
         model_to_use = model or self._model or DEFAULT_MODEL
 
         # Run the synchronous API call in a thread pool

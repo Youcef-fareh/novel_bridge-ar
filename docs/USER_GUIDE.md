@@ -8,7 +8,9 @@ Novel Bridge AR downloads chapters from supported novel websites, translates the
 
 ### 1. Install and start
 
-**Windows installer:** Run `NovelBridgeAR_Setup.exe`, then open NovelBridge AR from the Start Menu. The installer normally includes Python and the browser runtime, but an internet connection and a translation API key are still required.
+**Windows installer:** Run `NovelBridgeAR_Setup.exe`, then open NovelBridge AR from the Start Menu. The installer includes the application and its embedded GUI runtime. The optional Playwright Chromium runtime is a separate, version-matched release download so it does not inflate the installer. An internet connection and a translation API key are still required.
+
+**Enable browser-based scraping (optional):** Download `NovelBridgeAR_BrowserPack_<version>.zip` from the same GitHub release as the installer, verify its `.sha256` file, and extract the ZIP contents into `%LOCALAPPDATA%\ms-playwright` (create the folder if needed). Do not extract the archive into a new nested folder. Restart NovelBridge AR after extraction. Browser revisions match the app release, so repeat these steps with the matching pack after installing a newer app version. The GUI and ordinary HTTP-based scraping work without this pack; browser-rendered scraping, such as the Galaxy chapter-list expansion, requires it.
 
 **Run from source:** Install Python 3.11 or newer. In PowerShell, from the project folder, run:
 
@@ -102,6 +104,7 @@ The app requests only the `drive.file` permission, which allows it to create and
 | Invalid key, unauthorized, or 401/403 | Create a new key on the provider website, check that it is active and has permission, replace it with **Edit**, then **Save All**. |
 | Rate limit, quota, or 429 | Wait, reduce the number of jobs, check provider billing/quota, or use another configured provider. |
 | Model not found or bad request | Check the exact model name and Base URL. Remove old model entries and add the current provider model. |
+| Browser-based scraping reports that its executable is missing | Download the version-matched `NovelBridgeAR_BrowserPack_<version>.zip` from the release and extract its contents into `%LOCALAPPDATA%\ms-playwright`. |
 | Scrape/import fails | Confirm the URL is supported and opens in a browser. Retry later if the site is unavailable. Site selectors are in `config/sites.json`; do not bypass access controls. |
 | A scraping browser remains open or the app is closed during scraping | Closing the app cancels nodriver scraping and signals its temporary Chrome window to close. Chapters completed before closing remain saved. |
 | Application does not start | Activate `.venv`, reinstall with `python -m pip install -r requirements.txt`, install the browser with `python -m playwright install`, then run `python run_gui.py`. |
@@ -117,7 +120,9 @@ For development checks, run `pytest` from the project root. Use the tool only fo
 
 ### 1. التثبيت والتشغيل
 
-**مثبت Windows:** شغّل الملف `NovelBridgeAR_Setup.exe`، ثم افتح Novel Bridge AR من قائمة Start. يحتوي المثبت عادةً على Python وبيئة المتصفح، لكن يلزم اتصال بالإنترنت ومفتاح API للترجمة.
+**مثبت Windows:** شغّل الملف `NovelBridgeAR_Setup.exe`، ثم افتح Novel Bridge AR من قائمة Start. يحتوي المثبت على التطبيق وبيئة واجهة المستخدم المضمنة. أما متصفح Playwright الاختياري فيُنشر كتنزيل منفصل مطابق لإصدار التطبيق لتقليل حجم المثبت. يلزم اتصال بالإنترنت ومفتاح API للترجمة.
+
+**تفعيل الجلب باستخدام المتصفح (اختياري):** نزّل الملف `NovelBridgeAR_BrowserPack_<version>.zip` من صفحة إصدار GitHub نفسها التي نزّلت منها المثبت، وتحقق من ملف `.sha256`، ثم فك محتويات ZIP مباشرةً داخل `%LOCALAPPDATA%\ms-playwright` (أنشئ المجلد عند الحاجة). لا تفك الأرشيف داخل مجلد فرعي إضافي. أعد تشغيل Novel Bridge AR بعد فك الملفات. تتطابق إصدارات المتصفح مع إصدار التطبيق؛ لذلك كرر الخطوات باستخدام الحزمة المطابقة بعد تحديث التطبيق. تعمل الواجهة والجلب العادي عبر HTTP دون هذه الحزمة؛ أما الجلب الذي يحتاج إلى عرض الصفحة في متصفح، مثل توسيع قائمة فصول Galaxy، فيتطلبها.
 
 **التشغيل من المصدر:** ثبّت Python 3.11 أو أحدث. افتح PowerShell داخل مجلد المشروع وشغّل:
 

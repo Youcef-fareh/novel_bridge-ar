@@ -6,7 +6,6 @@ import atexit
 import json
 import logging
 import os
-import random
 import sys
 import tempfile
 import threading
@@ -18,6 +17,8 @@ import subprocess
 import weakref
 
 import httpx
+from bs4 import BeautifulSoup
+from backend.adapters.scraper_state import DEFAULT_HEADERS
 
 # Try importing curl_cffi; gracefully degrade if not installed
 try:
@@ -31,7 +32,6 @@ try:
     _SELECTOLAX_AVAILABLE = True
 except ImportError:
     _SELECTOLAX_AVAILABLE = False
-    from bs4 import BeautifulSoup
 
 # Load site config once
 _SITES_CONFIG: dict = {}
@@ -40,50 +40,83 @@ if _cfg_path.exists():
     _SITES_CONFIG = json.loads(_cfg_path.read_text(encoding="utf-8"))
 
 
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
+_HEADERS = DEFAULT_HEADERS
 
 
-async def fetch_html(url: str, site_id: str = "") -> str:
+async def fetch_html(
+    url: str,
+    site_id: str = "",
+    *,
+    timeout: Optional[float] = None,
+    max_attempts: Optional[int] = None,
+) -> str:
     """
     Fetch a URL and return HTML text.
     Strategy: httpx first, then curl_cffi if available and site config says so.
+    Pacing: uses per-origin pacer (scraper_state) to honour learned intervals.
     """
+    from backend.adapters.scraper_state import scraper_state
+    from urllib.parse import urlparse as _urlparse
+
     cfg = _SITES_CONFIG.get(site_id, {})
     use_curl = cfg.get("use_curl_cffi", True) and _CURL_CFFI_AVAILABLE
     delay_min = cfg.get("request_delay_min", 0.5)
     delay_max = cfg.get("request_delay_max", 2.0)
+    from backend.config import get_config
+    runtime_config = get_config()
+    timeout = (
+        timeout
+        if timeout is not None
+        else cfg.get("request_timeout", runtime_config.crawler.request_timeout)
+    )
+    attempts = (
+        max_attempts
+        if max_attempts is not None
+        else cfg.get("max_attempts", runtime_config.crawler.max_attempts)
+    )
+    if attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
 
-    await asyncio.sleep(random.uniform(delay_min, delay_max))
+    origin = _urlparse(url).netloc
+    declared_interval = (delay_min + delay_max) / 2.0
+    ctx = scraper_state.open(origin, declared_interval)
 
-    # 1. Try plain httpx
-    try:
-        async with httpx.AsyncClient(headers=_HEADERS, follow_redirects=True, timeout=30) as client:
-            resp = await client.get(url)
-            if resp.status_code == 200 and len(resp.text) > 500:
-                return resp.text
-            if resp.status_code in (403, 429, 503) and use_curl:
-                raise httpx.HTTPStatusError("Blocked", request=resp.request, response=resp)
-    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError):
-        if not use_curl:
-            raise
+    last_error: Optional[Exception] = None
+    for attempt in range(attempts):
+        await ctx.wait()
+        status_code = 0
+        try:
+            if attempt == 0 or not use_curl:
+                async with httpx.AsyncClient(
+                    headers=_HEADERS,
+                    follow_redirects=True,
+                    timeout=timeout,
+                ) as client:
+                    response = await client.get(url)
+                status_code = response.status_code
+                body = response.text
+            else:
+                async with CurlSession(impersonate="chrome124") as session:
+                    response = await session.get(url, headers=_HEADERS, timeout=timeout)
+                status_code = response.status_code
+                body = response.text
+            if status_code == 200 and len(body) > 500:
+                ctx.learn(success=True, status_code=status_code)
+                return body
+            last_error = RuntimeError(
+                f"Fetch returned HTTP {status_code} or an empty page for {url} "
+                f"(attempt {attempt + 1}/{attempts})."
+            )
+        except Exception as exc:
+            last_error = exc
+        ctx.learn(success=False, status_code=status_code)
+        retryable_status = status_code in (0, 200, 403, 429, 503) or status_code >= 500
+        if attempt + 1 >= attempts or not retryable_status:
+            break
 
-    # 2. Escalate to curl_cffi for Cloudflare bypass
-    if use_curl and _CURL_CFFI_AVAILABLE:
-        await asyncio.sleep(random.uniform(delay_min, delay_max))
-        async with CurlSession(impersonate="chrome124") as session:
-            resp = await session.get(url, headers=_HEADERS, timeout=30)
-            resp.raise_for_status()
-            return resp.text
-
-    raise RuntimeError(f"Failed to fetch {url}")
+    if last_error:
+        raise last_error
+    raise RuntimeError(f"Failed to fetch {url} after {attempts} attempts")
 
 
 async def fetch_html_playwright(url: str, wait_for: str = "") -> str:
@@ -502,3 +535,91 @@ def parse_chapter_body(html: str, css_selectors: list[str]) -> str:
                     return "\n\n".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
                 return node.get_text(separator="\n", strip=True)
     return ""
+
+
+def parse_chapter_image_urls(
+    html: str,
+    css_selectors: list[str],
+    base_url: str,
+    *,
+    limit: int = 8,
+) -> list[dict[str, str]]:
+    """Extract ordered image URLs and alt text from the selected chapter body."""
+    soup = BeautifulSoup(html, "lxml")
+    body = None
+    for selector in css_selectors:
+        body = soup.select_one(selector)
+        if body:
+            break
+    if body is None:
+        return []
+    found: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for node in body.select("img"):
+        candidate = ""
+        for attribute in (
+            "data-lazy-src", "data-original", "data-src", "data-lazy-srcset",
+            "data-srcset", "srcset", "src",
+        ):
+            value = node.get(attribute)
+            if value:
+                candidate = str(value).split(",", 1)[0].split()[0]
+                break
+        if candidate.startswith(("data:", "blob:", "javascript:")):
+            continue
+        url = urljoin(base_url, candidate)
+        path = urlparse(url).path.casefold()
+        if (
+            urlparse(url).scheme not in {"http", "https"}
+            or any(marker in path for marker in ("placeholder", "no-image", "nocover", "blank.gif"))
+            or url in seen
+        ):
+            continue
+        seen.add(url)
+        found.append({"url": url, "alt_text": str(node.get("alt", "")).strip()})
+        if len(found) >= limit:
+            break
+    return found
+
+
+async def post_html(url: str, data: dict, site_id: str = "") -> str:
+    """POST *data* to *url* and return the response HTML (for ajax endpoints).
+
+    Used by WordpressAdapter to hit /ajax/chapters/ and admin-ajax.php.
+    Falls back to curl_cffi if available and httpx is blocked.
+    """
+    from backend.adapters.scraper_state import scraper_state
+    from urllib.parse import urlparse as _urlparse
+
+    cfg = _SITES_CONFIG.get(site_id, {})
+    use_curl = cfg.get("use_curl_cffi", True) and _CURL_CFFI_AVAILABLE
+    timeout = cfg.get("request_timeout", 30)
+    origin = _urlparse(url).netloc
+    ctx = scraper_state.open(origin)
+    await ctx.wait()
+
+    last_status = 0
+    try:
+        async with httpx.AsyncClient(headers=_HEADERS, follow_redirects=True, timeout=timeout) as client:
+            resp = await client.post(url, data=data)
+            last_status = resp.status_code
+            if resp.status_code == 200:
+                ctx.learn(success=True)
+                return resp.text
+            if resp.status_code in (403, 429, 503) and use_curl:
+                ctx.learn(success=False, status_code=resp.status_code)
+                raise httpx.HTTPStatusError("Blocked", request=resp.request, response=resp)
+    except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError):
+        ctx.learn(success=False, status_code=last_status)
+        if not use_curl:
+            raise
+
+    if use_curl and _CURL_CFFI_AVAILABLE:
+        async with CurlSession(impersonate="chrome124") as session:
+            resp = await session.post(url, data=data, headers=_HEADERS, timeout=timeout)
+            resp.raise_for_status()
+            ctx.learn(success=True)
+            return resp.text
+
+    ctx.learn(success=False)
+    raise RuntimeError(f"POST failed for {url}")
