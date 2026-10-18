@@ -12,7 +12,7 @@ from typing import Generator, List, Optional
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
-from sqlalchemy import event
+from sqlalchemy import delete as sql_delete, event
 from sqlmodel import Session, SQLModel, create_engine, select
 from sqlalchemy import func
 
@@ -204,27 +204,28 @@ def update_novel(novel_id: int, **kwargs) -> Optional[Novel]:
 def delete_novel(novel_id: int) -> bool:
     image_paths: list[Path] = []
     with Session(_engine) as session:
-        novel = session.get(Novel, novel_id)
-        if not novel:
+        if session.get(Novel, novel_id) is None:
             return False
-        # Delete related chapters and jobs
-        for ch in session.exec(select(Chapter).where(Chapter.novel_id == novel_id)).all():
-            images = session.exec(
-                select(ChapterImage).where(ChapterImage.chapter_id == ch.id)
+
+        chapter_ids = select(Chapter.id).where(Chapter.novel_id == novel_id)
+        image_paths = [
+            Path(path)
+            for path in session.exec(
+                select(ChapterImage.file_path)
+                .join(Chapter, Chapter.id == ChapterImage.chapter_id)
+                .where(Chapter.novel_id == novel_id)
             ).all()
-            image_paths.extend(Path(image.file_path) for image in images)
-            for image in images:
-                session.delete(image)
-            session.delete(ch)
-        for job in session.exec(select(Job).where(Job.novel_id == novel_id)).all():
-            session.delete(job)
-        for glossary in session.exec(
-            select(NovelGlossary).where(NovelGlossary.novel_id == novel_id)
-        ).all():
-            session.delete(glossary)
-        for volume in session.exec(select(Volume).where(Volume.novel_id == novel_id)).all():
-            session.delete(volume)
-        session.delete(novel)
+        ]
+
+        # Issue deletes in foreign-key order so SQLite never sees an orphaned child.
+        session.execute(
+            sql_delete(ChapterImage).where(ChapterImage.chapter_id.in_(chapter_ids))
+        )
+        session.execute(sql_delete(Chapter).where(Chapter.novel_id == novel_id))
+        session.execute(sql_delete(Job).where(Job.novel_id == novel_id))
+        session.execute(sql_delete(NovelGlossary).where(NovelGlossary.novel_id == novel_id))
+        session.execute(sql_delete(Volume).where(Volume.novel_id == novel_id))
+        session.execute(sql_delete(Novel).where(Novel.id == novel_id))
         session.commit()
     image_root = (get_config().paths.data_dir / "chapter-images").resolve()
     for image_path in image_paths:

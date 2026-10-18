@@ -55,7 +55,10 @@ class ModernCrawler:
     def download_chapter(self, chapter):
         assert self.initialized
         self.downloaded_novel_url = self.novel_url
-        chapter.body = "<div><p>One paragraph.</p><p>Another paragraph.</p></div>"
+        chapter.body = (
+            "<div><p>One <em>formatted</em> paragraph.</p>"
+            "<p>Another paragraph.</p></div>"
+        )
 
     def close(self):
         self.closed = True
@@ -108,7 +111,7 @@ async def test_lncrawl_bridge_adapts_modern_crawler_and_isolates_instances():
     assert metadata.cover_url == "https://example.org/cover.jpg"
     assert [chapter.title for chapter in chapters] == ["Chapter 1", "Chapter 2"]
     assert chapters[0].source_url == "https://example.org/chapter-1"
-    assert body == "One paragraph.\nAnother paragraph."
+    assert body == "One formatted paragraph.\n\nAnother paragraph."
     assert len(ModernCrawler.instances) == 2
     assert ModernCrawler.instances[1].downloaded_novel_url == "https://example.org/novel/one"
     assert all(
@@ -157,6 +160,36 @@ async def test_lncrawl_bridge_preserves_source_chapter_fields_for_download():
     content = await adapter.get_chapter_text(chapters[0].source_url)
 
     assert content == "Chapter content"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_language", ["English", "Arabic"])
+async def test_lncrawl_bridge_preserves_breaks_and_inline_text(source_language):
+    from backend.adapters.lncrawl_bridge import LNCrawlBridgeAdapter
+
+    class ParagraphCrawler(LegacyCrawler):
+        base_url = ["https://paragraphs.example/"]
+
+        def download_chapter_body(self, chapter):
+            return (
+                "<div><p>First <span>complete</span> paragraph.</p>"
+                "<p>Second paragraph<br/>continued on a new line.</p></div>"
+            )
+
+    adapter = LNCrawlBridgeAdapter(
+        ParagraphCrawler,
+        "lncrawl_test_paragraphs",
+        FakeNovel,
+        FakeChapter,
+        source_language=source_language,
+    )
+
+    content = await adapter.get_chapter_text("https://paragraphs.example/chapter")
+
+    assert content == (
+        "First complete paragraph.\n\n"
+        "Second paragraph\n\ncontinued on a new line."
+    )
 
 
 @pytest.mark.asyncio

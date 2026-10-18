@@ -615,6 +615,37 @@ def test_epub_builder_escapes_plain_text(tmp_path):
     assert cover_root.findtext(".//x:div[@class='description']", namespaces=namespace) == novel.description
 
 
+def test_epub_builder_preserves_scraped_paragraph_breaks(tmp_path):
+    from xml.etree import ElementTree
+    from zipfile import ZipFile
+    from backend.models import Chapter, ChapterStatus, Novel, NovelStatus
+    from backend.epub_builder import build_epub
+
+    novel = Novel(
+        id=9, title="Paragraph Test", source_url="https://example.com",
+        source_site="lncrawl_test", status=NovelStatus.scraped,
+    )
+    chapter = Chapter(
+        id=9, novel_id=9, index=0, title="Chapter One",
+        source_url="https://example.com/chapter-1",
+        translated_text="First paragraph.\n\nSecond paragraph.",
+        status=ChapterStatus.translated,
+    )
+
+    output = build_epub(novel, [chapter], output_dir=tmp_path)
+
+    with ZipFile(output) as archive:
+        chapter_root = ElementTree.fromstring(
+            archive.read("EPUB/text/chapter_0000.xhtml")
+        )
+
+    namespace = {"x": "http://www.w3.org/1999/xhtml"}
+    assert [
+        paragraph.text
+        for paragraph in chapter_root.findall(".//x:p", namespaces=namespace)
+    ] == ["First paragraph.", "Second paragraph."]
+
+
 def test_epub_builder_preserves_cover_image_type(tmp_path, monkeypatch):
     from zipfile import ZipFile
     from backend.models import Novel, NovelStatus

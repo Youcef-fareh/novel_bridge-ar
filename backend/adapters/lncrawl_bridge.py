@@ -18,11 +18,41 @@ from types import ModuleType, SimpleNamespace
 from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
 from backend.adapters.base import AdapterRegistry, ChapterRef, NovelMeta, SiteAdapter
 
 logger = logging.getLogger("novelbridge.adapters.lncrawl")
+
+_BLOCK_TAGS = frozenset(
+    {
+        "address",
+        "article",
+        "blockquote",
+        "dd",
+        "div",
+        "dl",
+        "dt",
+        "figcaption",
+        "figure",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "li",
+        "main",
+        "ol",
+        "p",
+        "section",
+        "table",
+        "tr",
+        "ul",
+    }
+)
 
 
 def _get_value(value: Any, *names: str, default: Any = None) -> Any:
@@ -43,6 +73,32 @@ def _as_text(value: Any) -> Optional[str]:
         value = ", ".join(str(part).strip() for part in value if str(part).strip())
     text = str(value).strip()
     return text or None
+
+
+def _html_to_paragraph_text(html: str) -> str:
+    """Extract chapter text while retaining HTML block and line-break boundaries."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    def extract(node: Any) -> str:
+        if isinstance(node, Comment):
+            return ""
+        if isinstance(node, NavigableString):
+            return str(node)
+        if not isinstance(node, Tag) or node.name in {"script", "style"}:
+            return ""
+        if node.name in {"br", "hr"}:
+            return "\n\n"
+
+        content = "".join(extract(child) for child in node.children)
+        if node.name in _BLOCK_TAGS:
+            return f"\n\n{content}\n\n"
+        return content
+
+    paragraphs = [
+        re.sub(r"\s+", " ", paragraph).strip()
+        for paragraph in extract(soup).split("\n\n")
+    ]
+    return "\n\n".join(paragraph for paragraph in paragraphs if paragraph)
 
 
 def _base_urls(value: Any) -> list[str]:
@@ -283,7 +339,7 @@ class LNCrawlBridgeAdapter(SiteAdapter):
 
             if body is None:
                 return ""
-            return BeautifulSoup(str(body), "html.parser").get_text("\n", strip=True)
+            return _html_to_paragraph_text(str(body))
         finally:
             self._close_crawler(crawler)
 

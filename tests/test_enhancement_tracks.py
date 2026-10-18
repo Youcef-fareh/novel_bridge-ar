@@ -142,6 +142,56 @@ def test_novel_glossary_storage_and_job_pagination(tmp_path, monkeypatch):
     assert database.replay_job(first.id).parent_job_id == first.id
 
 
+def test_delete_novel_removes_epub_job_and_foreign_key_dependents(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "delete-novel.db"))
+    import backend.database as database
+
+    database = importlib.reload(database)
+    database.init_db()
+    novel = database.create_novel("https://example.org/book", "example")
+    chapter = database.upsert_chapter(
+        novel.id, 0, "Chapter", "https://example.org/chapter"
+    )
+    image_root = tmp_path / "data" / "chapter-images"
+    image_root.mkdir(parents=True)
+    image_path = image_root / "chapter.png"
+    image_path.write_bytes(b"image")
+
+    from backend.models import ChapterImage, JobType, Volume
+
+    with database.get_session() as session:
+        session.add(
+            ChapterImage(
+                chapter_id=chapter.id,
+                image_id="chapter-image",
+                file_path=str(image_path),
+                media_type="image/png",
+                size_bytes=image_path.stat().st_size,
+            )
+        )
+        session.add(Volume(novel_id=novel.id, serial=1, chapter_count=1))
+        session.commit()
+
+    database.set_novel_glossary_term(novel.id, "dragon", "تنين")
+    epub_job = database.create_job(novel.id, JobType.build_epub)
+    database.update_job(epub_job.id, output_path="output/novel.epub")
+    monkeypatch.setattr(
+        database,
+        "get_config",
+        lambda: SimpleNamespace(
+            paths=SimpleNamespace(data_dir=tmp_path / "data")
+        ),
+    )
+
+    assert database.delete_novel(novel.id) is True
+    assert database.get_novel(novel.id) is None
+    assert database.get_chapters(novel.id) == []
+    assert database.get_volumes(novel.id) == []
+    assert database.get_novel_glossary(novel.id) == {}
+    assert database.get_job(epub_job.id) is None
+    assert not image_path.exists()
+
+
 @pytest.mark.asyncio
 async def test_scrape_transient_failure_is_not_empty_attempt_and_fails_job(tmp_path, monkeypatch):
     monkeypatch.setenv("DB_PATH", str(tmp_path / "scrape-failure.db"))
