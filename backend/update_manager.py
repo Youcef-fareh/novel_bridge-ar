@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
@@ -47,10 +48,20 @@ def read_installed_version() -> str:
 
 def select_update(releases: list[dict], current_version: str) -> Optional[UpdatePlan]:
     current_key = _version_key(current_version)
-    stable_releases = [
-        release for release in releases
-        if not release.get("draft") and not release.get("prerelease")
-    ]
+    stable_releases = []
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        # Skip malformed side-tags (e.g. "app-2.0") instead of letting
+        # _version_key raise inside max() and kill the entire update check.
+        try:
+            _version_key(str(release.get("tag_name", "")).removeprefix("v"))
+        except ValueError:
+            logging.getLogger("novelbridge.update").warning(
+                "Skipping release with unparseable tag %r", release.get("tag_name")
+            )
+            continue
+        stable_releases.append(release)
     if not stable_releases:
         return None
 
@@ -97,11 +108,10 @@ def download_update_asset(plan: UpdatePlan, directory: Path) -> Path:
         plan.checksum_url, headers={"User-Agent": "NovelBridgeAR"}
     )
     with urllib.request.urlopen(checksum_request, timeout=20) as response:
-        checksum_text = response.read(4096).decode("ascii", errors="replace")
-    checksum_match = _SHA256_RE.search(checksum_text)
-    if not checksum_match:
+        checksum_text = response.read().decode("ascii", errors="replace")
+    expected_digest = _checksum_for_asset(checksum_text, plan.asset_name)
+    if not expected_digest:
         raise ValueError("The update release did not provide a valid SHA-256 checksum.")
-    expected_digest = checksum_match.group(1).lower()
 
     destination = directory / Path(plan.asset_name).name
     temporary = destination.with_suffix(destination.suffix + ".download")
@@ -120,3 +130,23 @@ def download_update_asset(plan: UpdatePlan, directory: Path) -> Path:
         return destination
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _checksum_for_asset(checksum_text: str, asset_name: str) -> str | None:
+    """Select a checksum for this asset, or accept a digest-only file."""
+    basename = Path(asset_name).name
+    rows = [line.split() for line in checksum_text.splitlines() if line.strip()]
+    named_digests = [
+        match.group(1).lower()
+        for parts in rows
+        if len(parts) >= 2 and Path(parts[-1].lstrip("*")).name == basename
+        for match in [_SHA256_RE.fullmatch(parts[0])]
+        if match
+    ]
+    if named_digests:
+        return named_digests[0]
+    if len(rows) == 1 and len(rows[0]) == 1:
+        match = _SHA256_RE.fullmatch(rows[0][0])
+        if match:
+            return match.group(1).lower()
+    return None

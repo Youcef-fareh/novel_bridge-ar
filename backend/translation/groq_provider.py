@@ -6,13 +6,14 @@ from __future__ import annotations
 from typing import Optional
 import asyncio
 import os
+import re
 from typing import List
 from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -22,8 +23,11 @@ load_dotenv()
 from backend.models import GlossaryRule
 from backend.translation.base import (
     TranslationProvider,
+    TruncatedOutputError,
     apply_glossary_postpass,
     build_system_prompt,
+    is_retryable_error,
+    is_streaming_unsupported_error,
 )
 
 import logging
@@ -137,31 +141,73 @@ class GroqProvider(TranslationProvider):
 
     @staticmethod
     def _split_text(text: str, max_chars: int = MAX_CHUNK_CHARS) -> List[str]:
-        paragraphs = text.split("\n\n")
+        """Split *text* into chunks of at most *max_chars*, preserving paragraphs.
+
+        Normal paragraphs pack into chunks joined with "\\n\\n". Oversized
+        paragraphs are split at sentence boundaries and their pieces pack into
+        chunks joined with a single "\\n" — so a paragraph's pieces never get
+        separated by a fabricated blank line inside a chunk. Only unavoidable
+        chunk boundaries (API call limits) fall mid-paragraph.
+        """
         chunks: List[str] = []
         current: List[str] = []
+        current_seps: List[str] = []  # separator preceding each segment
         current_length = 0
 
-        for paragraph in paragraphs:
-            if len(paragraph) > max_chars:
-                if current:
-                    chunks.append("\n\n".join(current))
-                    current, current_length = [], 0
-                chunks.extend(
-                    paragraph[index:index + max_chars]
-                    for index in range(0, len(paragraph), max_chars)
+        def flush() -> None:
+            nonlocal current, current_seps, current_length
+            if current:
+                chunks.append(
+                    current[0]
+                    + "".join(sep + seg for sep, seg in zip(current_seps[1:], current[1:]))
                 )
+                current, current_seps, current_length = [], [], 0
+
+        def add(segment: str, sep: str) -> None:
+            """Pack *segment* into the chunk being built, using *sep* before it."""
+            nonlocal current_length
+            if current and current_length + len(sep) + len(segment) > max_chars:
+                flush()
+            current_seps.append("" if not current else sep)
+            current.append(segment)
+            current_length += len(segment) + (len(sep) if len(current) > 1 else 0)
+
+        for paragraph in text.split("\n\n"):
+            if len(paragraph) <= max_chars:
+                add(paragraph, "\n\n")
                 continue
 
-            added_length = len(paragraph) + (2 if current else 0)
-            if current and current_length + added_length > max_chars:
-                chunks.append("\n\n".join(current))
-                current, current_length = [], 0
-            current.append(paragraph)
-            current_length += len(paragraph) + (2 if len(current) > 1 else 0)
+            # Oversized paragraph: split at sentence boundaries, packing the
+            # pieces with soft ("\n") breaks only.
+            pieces: List[str] = []
+            buf = ""
+            for sentence in re.split(r"(?<=[.!?؟。！？])\s+", paragraph):
+                candidate = sentence if not buf else buf + " " + sentence
+                if len(candidate) <= max_chars:
+                    buf = candidate
+                    continue
+                if buf:
+                    pieces.append(buf)
+                    buf = ""
+                # The sentence alone may still exceed max_chars: hard-split
+                # at word boundaries.
+                while len(sentence) > max_chars:
+                    cut = sentence.rfind(" ", 0, max_chars + 1)
+                    if cut <= 0:
+                        cut = max_chars
+                    pieces.append(sentence[:cut].rstrip())
+                    sentence = sentence[cut:].lstrip()
+                buf = sentence
+            if buf:
+                pieces.append(buf)
 
-        if current:
-            chunks.append("\n\n".join(current))
+            for index, piece in enumerate(pieces):
+                # The first piece continues the previous *paragraph* boundary
+                # ("\n\n"); only later pieces of the SAME oversized paragraph
+                # use a soft "\n" break.
+                add(piece, "\n\n" if index == 0 else "\n")
+
+        flush()
         return chunks or [text]
 
     async def translate_chapter(
@@ -187,7 +233,7 @@ class GroqProvider(TranslationProvider):
         return apply_glossary_postpass("\n\n".join(translated_chunks), glossary)
 
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(is_retryable_error),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -209,11 +255,20 @@ class GroqProvider(TranslationProvider):
                 **request_options,
             )
             content_parts: List[str] = []
+            finish_reason = None
             for chunk in completion:
                 chunk_text = self._stream_text(chunk)
                 if chunk_text:
                     content_parts.append(chunk_text)
+                choices = self._field(chunk, "choices", []) or []
+                if choices:
+                    finish_reason = self._field(choices[0], "finish_reason") or finish_reason
             translated = "".join(content_parts).strip()
+            if finish_reason == "length":
+                raise TruncatedOutputError(
+                    f"Groq ({model}) hit its output-token limit mid-chunk; "
+                    "the translation would be incomplete."
+                )
             if not translated:
                 logger.warning("Groq stream returned no content, trying non-streaming completion")
                 fallback_options = dict(request_options)
@@ -222,7 +277,14 @@ class GroqProvider(TranslationProvider):
                     **fallback_options,
                 )
                 translated = self._response_text(response)
+        except TruncatedOutputError:
+            raise
         except Exception as stream_err:
+            # Only fall back to non-streaming for streaming-specific failures.
+            # Retrying auth/quota/network errors with a second (paid) request
+            # would hide the real failure behind a duplicate call.
+            if not is_streaming_unsupported_error(stream_err):
+                raise
             logger.warning(f"Groq streaming completion failed, trying non-streaming: {stream_err}")
             fallback_options = dict(request_options)
             fallback_options["stream"] = False

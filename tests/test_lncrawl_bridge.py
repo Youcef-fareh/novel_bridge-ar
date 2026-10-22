@@ -89,6 +89,23 @@ class LegacyCrawler:
         self.closed = True
 
 
+def test_default_lncrawl_root_finds_pyinstaller_internal_data(tmp_path, monkeypatch):
+    from backend.adapters import lncrawl_bridge
+
+    frozen_data_dir = tmp_path / "_internal"
+    checkout = frozen_data_dir / "lightnovel-crawler-dev"
+    (checkout / "lncrawl").mkdir(parents=True)
+    monkeypatch.setattr(
+        lncrawl_bridge,
+        "__file__",
+        str(tmp_path / "backend" / "adapters" / "lncrawl_bridge.py"),
+    )
+    monkeypatch.setattr(sys, "_MEIPASS", str(frozen_data_dir), raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "NovelBridgeAR.exe"))
+
+    assert lncrawl_bridge._default_lncrawl_root() == checkout
+
+
 @pytest.mark.asyncio
 async def test_lncrawl_bridge_adapts_modern_crawler_and_isolates_instances():
     from backend.adapters.lncrawl_bridge import LNCrawlBridgeAdapter
@@ -117,6 +134,37 @@ async def test_lncrawl_bridge_adapts_modern_crawler_and_isolates_instances():
     assert all(
         instance.initialized and instance.closed for instance in ModernCrawler.instances
     )
+
+
+@pytest.mark.asyncio
+async def test_lncrawl_bridge_search_returns_only_source_urls():
+    from backend.adapters.lncrawl_bridge import LNCrawlBridgeAdapter
+
+    class SearchCrawler:
+        base_url = ["https://search.example.org"]
+
+        def initialize(self):
+            pass
+
+        def search(self, query):
+            return [
+                SimpleNamespace(title=f"{query} novel", url="/book/one"),
+                SimpleNamespace(title="Outside result", url="https://other.example/book"),
+            ]
+
+        def close(self):
+            pass
+
+    adapter = LNCrawlBridgeAdapter(
+        SearchCrawler, "lncrawl_test_search", FakeNovel, FakeChapter
+    )
+    adapter.can_search = True
+
+    results = await adapter.search("Sample", limit=5)
+
+    assert [(item.title, item.url, item.source_site) for item in results] == [
+        ("Sample novel", "https://search.example.org/book/one", "lncrawl_test_search")
+    ]
 
 
 @pytest.mark.asyncio

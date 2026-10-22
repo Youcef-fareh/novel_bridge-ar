@@ -8,8 +8,7 @@ from typing import List
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QKeyEvent
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QHeaderView, QLabel,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from backend.models import Chapter, ChapterStatus

@@ -5,9 +5,8 @@ import importlib
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from types import SimpleNamespace
 
-import pytest
 
 
 def _fresh_database(tmp_path, monkeypatch):
@@ -57,7 +56,7 @@ def test_expired_worker_lease_is_requeued_and_progress_retained(tmp_path, monkey
 
     novel = database.create_novel("https://example.org/book", "example")
     job = database.enqueue_job(novel.id, JobType.scrape)
-    claimed = database.claim_next_job("interrupted-worker")
+    database.claim_next_job("interrupted-worker")
     database.update_job(job.id, status=JobStatus.running)
     assert database.recover_interrupted_jobs() == 0
     assert database.get_job(job.id).status == JobStatus.running
@@ -79,6 +78,54 @@ def test_expired_worker_lease_is_requeued_and_progress_retained(tmp_path, monkey
     assert recovered.progress == 42
     assert recovered.done_items == 7
     assert database.claim_next_job("replacement-worker").id == job.id
+
+
+def test_expired_paused_job_is_requeued_but_never_started_pause_is_kept(tmp_path, monkeypatch):
+    database = _fresh_database(tmp_path, monkeypatch)
+    from backend.models import JobStatus, JobType
+
+    novel = database.create_novel("https://example.org/book", "example")
+    job = database.enqueue_job(novel.id, JobType.scrape)
+    database.claim_next_job("interrupted-worker")
+    database.update_job(job.id, status=JobStatus.paused)
+    with database._engine.begin() as conn:
+        conn.exec_driver_sql(
+            "UPDATE job SET lease_expires_at = ? WHERE id = ?",
+            (
+                (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(sep=" "),
+                job.id,
+            ),
+        )
+
+    assert database.recover_interrupted_jobs() == 1
+    assert database.get_job(job.id).status == JobStatus.queued
+
+    queued_pause = database.enqueue_job(novel.id, JobType.translate)
+    database.update_job(queued_pause.id, status=JobStatus.paused)
+    assert database.recover_interrupted_jobs() == 0
+    assert database.get_job(queued_pause.id).status == JobStatus.paused
+
+
+def test_delete_novel_refuses_while_a_job_is_running(tmp_path, monkeypatch):
+    database = _fresh_database(tmp_path, monkeypatch)
+    from backend.models import JobStatus, JobType
+
+    novel = database.create_novel("https://example.org/book", "example")
+    database.upsert_chapter(novel.id, 0, "Chapter", "https://example.org/1")
+    job = database.enqueue_job(novel.id, JobType.scrape)
+    database.claim_next_job("active-worker")
+
+    assert database.delete_novel(novel.id) is False
+    assert database.get_novel(novel.id) is not None
+
+    database.update_job(job.id, status=JobStatus.completed)
+    monkeypatch.setattr(
+        database,
+        "get_config",
+        lambda: SimpleNamespace(paths=SimpleNamespace(data_dir=tmp_path / "data")),
+    )
+    assert database.delete_novel(novel.id) is True
+    assert database.get_novel(novel.id) is None
 
 
 def test_scheduler_schema_migrates_legacy_job_table(tmp_path, monkeypatch):
@@ -166,7 +213,7 @@ def test_pause_resume_and_cancel_persist_to_job(tmp_path, monkeypatch):
     assert database.get_job(job.id).finished_at is not None
 
 
-def test_scrubber_removes_only_old_epubs_to_respect_cap(tmp_path):
+def test_scrubber_removes_old_artifacts_to_respect_cap(tmp_path):
     from backend.scrubber import scrub_output
 
     output = tmp_path / "output"
@@ -187,10 +234,10 @@ def test_scrubber_removes_only_old_epubs_to_respect_cap(tmp_path):
         min_age_seconds=7 * 24 * 60 * 60,
     )
 
-    assert (removed_count, removed_bytes) == (1, 12)
+    assert (removed_count, removed_bytes) == (2, 16)
     assert not old_epub.exists()
     assert recent_epub.exists()
-    assert old_other.exists()
+    assert not old_other.exists()
 
 
 def test_scheduler_worker_executes_persisted_job(tmp_path, monkeypatch):

@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from pathlib import Path
 from typing import List
 from urllib.parse import urljoin
 
@@ -19,7 +18,7 @@ except ImportError:
 # Always import BeautifulSoup — used for honeypot cleaning regardless of selectolax.
 from bs4 import BeautifulSoup
 
-from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
+from backend.adapters.base import ChapterRef, NovelMeta, host_matches
 from backend.adapters.fetcher import (
     fetch_html_nodriver,
     fetch_html_playwright,
@@ -28,27 +27,47 @@ from backend.adapters.fetcher import (
     parse_links,
     parse_text,
 )
+from backend.config import resolve_path
 
 _SITE_ID = "ranovel"
 _BASE = "https://ranovel.com"
 
-_cfg_path = Path("config/sites.json")
+_cfg_path = resolve_path("config/sites.json")
 _SEL: dict = {}
 if _cfg_path.exists():
     _SEL = json.loads(_cfg_path.read_text(encoding="utf-8")).get(_SITE_ID, {}).get("selectors", {})
 
 # ── Honeypot / watermark cleaning ────────────────────────────────────────────
 
-# Text patterns Ranovel injects inside hidden paragraphs.
-_WATERMARK_RE = re.compile(
+# Strong markers: site-brand strings that never appear in real prose, safe to
+# match anywhere inside a paragraph.
+_STRONG_WATERMARK_RE = re.compile(
     r"ran\(?o\)?vel"
     r"|ra/n\(o\)ve/l"
-    r"|read\s+novel"
-    r"|ranovel\s+dot\s+com"
-    r"|korean\s+novel"
-    r"|only\s+ran",
+    r"|ranovel\s+dot\s+com",
     re.IGNORECASE,
 )
+
+# Weak, generic English phrases: only watermarks when they START a short
+# paragraph or its last line. Matching these anywhere used to delete real
+# prose such as "she only ran a few steps".
+_WEAK_WATERMARK_LINE_RE = re.compile(
+    r"^(?:read\s+novel|korean\s+novel|only\s+ran)\b",
+    re.IGNORECASE,
+)
+_MAX_WATERMARK_LINE_CHARS = 120
+
+
+def _is_watermark_paragraph(text: str) -> bool:
+    if _STRONG_WATERMARK_RE.search(text):
+        return True
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    if not lines:
+        return False
+    for line in (lines[0], lines[-1]):
+        if len(line) <= _MAX_WATERMARK_LINE_CHARS and _WEAK_WATERMARK_LINE_RE.match(line):
+            return True
+    return False
 
 
 def _color_equals_bg(style: str) -> bool:
@@ -82,9 +101,11 @@ def _clean_chapter_html(html: str) -> str:
     ):
         el.decompose()
 
-    # 3. Remove any surviving paragraph whose text matches a watermark pattern.
+    # 3. Remove any surviving paragraph that IS a watermark. Weak phrases
+    # ("read novel", "only ran") only count at the start of a short
+    # first/last line, so real prose survives.
     for el in soup.find_all("p"):
-        if _WATERMARK_RE.search(el.get_text()):
+        if _is_watermark_paragraph(el.get_text()):
             el.decompose()
 
     return str(soup)
@@ -236,7 +257,7 @@ class RanovelAdapter(WordpressAdapter):
     chapter_body_selectors = [".reading-content", ".text-left", ".entry-content", "#chapter-container"]
 
     def can_handle(self, url: str) -> bool:
-        return "ranovel.com" in url.lower()
+        return host_matches(url, ("ranovel.com",))
 
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
         html = await _fetch_ranovel_html(novel_url, ".post-title, .summary_content")
@@ -333,9 +354,9 @@ class RanovelAdapter(WordpressAdapter):
         selectors = _split_selectors(_SEL.get("chapter_text", ".reading-content, .text-left, .entry-content, #chapter-container"))
         text = parse_chapter_body(html, selectors) or parse_text(html, selectors) or ""
 
-        # Final safety-net: drop any line that still mentions the watermark site.
+        # Final safety-net: drop any line that is still a watermark.
         lines = [
             ln for ln in text.splitlines()
-            if not _WATERMARK_RE.search(ln)
+            if not _is_watermark_paragraph(ln)
         ]
         return "\n".join(lines).strip()

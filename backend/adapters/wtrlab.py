@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
@@ -44,13 +43,13 @@ except ImportError:
     BeautifulSoup = None
     _BS4_AVAILABLE = False
 
-from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
+from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter, host_matches
 from backend.adapters.fetcher import (
     fetch_html_nodriver,
     parse_attr,
-    parse_chapter_body,
     parse_text,
 )
+from backend.config import resolve_path
 
 _SITE_ID = "wtrlab"
 _BASE = "https://wtr-lab.com"
@@ -77,7 +76,7 @@ _TOC_CONTAINER_SELECTORS = (
     "[class*='chapter-list']",
 )
 
-_cfg_path = Path("config/sites.json")
+_cfg_path = resolve_path("config/sites.json")
 _SEL: dict = {}
 
 if _cfg_path.exists():
@@ -134,8 +133,7 @@ class WTRLabAdapter(SiteAdapter):
     site_id = _SITE_ID
 
     def can_handle(self, url: str) -> bool:
-        lowered = url.lower()
-        return "wtr-lab.com" in lowered
+        return host_matches(url, ("wtr-lab.com",))
 
     # ------------------------------------------------------------------
     # Metadata
@@ -1098,25 +1096,29 @@ class WTRLabAdapter(SiteAdapter):
         expected_chapter: Optional[int],
     ) -> str:
         """Load a chapter and reject silent redirects to another novel."""
-        html = await fetch_html_nodriver(
+        html, final_url = await fetch_html_nodriver(  # type: ignore[misc]
             chapter_url,
             wait_selector=(
                 ".chapter-body, .tiptap-content, .chapter-content, .story-part, "
                 "#chapter-container, article, main"
             ),
             timeout=120,
+            return_final_url=True,
         )
 
-        actual_novel_id = _novel_id_from_url(chapter_url)
-        actual_chapter = _chapter_number(chapter_url)
+        # Validate against the URL the browser actually ended on — comparing
+        # the input URL against itself would make this guard dead code.
+        actual_url = final_url or chapter_url
+        actual_novel_id = _novel_id_from_url(actual_url)
+        actual_chapter = _chapter_number(actual_url)
         if expected_novel_id and actual_novel_id != expected_novel_id:
             raise RuntimeError(
                 f"WTR-Lab redirected chapter to another novel: "
-                f"expected {expected_novel_id}, got {actual_novel_id}"
+                f"expected {expected_novel_id}, got {actual_novel_id} (final URL: {actual_url})"
             )
         if expected_chapter and actual_chapter != expected_chapter:
             raise RuntimeError(
                 f"WTR-Lab redirected to another chapter: "
-                f"expected {expected_chapter}, got {actual_chapter}"
+                f"expected {expected_chapter}, got {actual_chapter} (final URL: {actual_url})"
             )
         return html

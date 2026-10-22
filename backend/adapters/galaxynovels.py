@@ -4,10 +4,10 @@ NovelBridge — GalaxyNovels.com (Arabic) site adapter.
 from __future__ import annotations
 
 import json
+import logging
 import re
-from pathlib import Path
 from typing import List
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 try:
     from selectolax.parser import HTMLParser
@@ -17,17 +17,20 @@ except ImportError:
 
 from bs4 import BeautifulSoup
 
-from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
+from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter, host_matches
 from backend.adapters.fetcher import (
     fetch_html, fetch_html_playwright, parse_attr, parse_chapter_body,
     parse_links, parse_text,
 )
+from backend.config import resolve_path
 
 _SITE_ID = "galaxynovels"
 _BASE    = "https://galaxynovels.com"
 
+logger = logging.getLogger("novelbridge.adapters.galaxynovels")
+
 # Load selectors from config
-_cfg_path = Path("config/sites.json")
+_cfg_path = resolve_path("config/sites.json")
 _SEL: dict = {}
 if _cfg_path.exists():
     _SEL = json.loads(_cfg_path.read_text(encoding="utf-8")).get(_SITE_ID, {}).get("selectors", {})
@@ -97,7 +100,7 @@ class GalaxyNovelsAdapter(SiteAdapter):
     is_native_arabic = True
 
     def can_handle(self, url: str) -> bool:
-        return "galaxynovels.com" in url or "galaxynovel" in url
+        return host_matches(url, ("galaxynovels.com",))
 
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
         html = await _fetch_galaxy_html(novel_url, "h1")
@@ -106,13 +109,16 @@ class GalaxyNovelsAdapter(SiteAdapter):
         author = parse_text(html, _split_selectors(_SEL.get("novel_author", ".author, .wor-author a")))
         
         # If author not found in standard selectors, search for author metadata in meta tags or descriptions
+        # NOTE: capture up to the structural delimiters (comma/newline) or the
+        # " على" separator — never exclude the Arabic letters ع/ل/ي as the old
+        # "[^على]" class did, which truncated any author containing them.
         if not author:
             if _SELECTOLAX_AVAILABLE:
                 tree = HTMLParser(html)
                 desc_meta = tree.css_first("meta[name=description]")
                 if desc_meta:
                     m_text = desc_meta.attributes.get("content", "")
-                    match = re.search(r"المؤلف\s+([^على]+?)\s+على", m_text)
+                    match = re.search(r"المؤلف\s+([^،\n]+?)\s+على", m_text)
                     if match:
                         author = match.group(1).strip()
             else:
@@ -120,7 +126,7 @@ class GalaxyNovelsAdapter(SiteAdapter):
                 desc_meta = soup.select_one("meta[name=description]")
                 if desc_meta:
                     m_text = desc_meta.get("content", "")
-                    match = re.search(r"المؤلف\s+([^على]+?)\s+على", m_text)
+                    match = re.search(r"المؤلف\s+([^،\n]+?)\s+على", m_text)
                     if match:
                         author = match.group(1).strip()
 
@@ -187,6 +193,8 @@ class GalaxyNovelsAdapter(SiteAdapter):
                 raw_chapters = data.get("chapters", [])
                 for item in raw_chapters:
                     ch_url = item.get("url")
+                    if ch_url:
+                        ch_url = urljoin(novel_url, ch_url)
                     if ch_url and ch_url not in seen_urls:
                         seen_urls.add(ch_url)
                         label = item.get("label", "")
@@ -299,30 +307,59 @@ class GalaxyNovelsAdapter(SiteAdapter):
                         or container.get("data-index-url")
                         or ""
                     )
-                if index_url:
+
+            if index_url:
+                try:
                     index_html = await fetch_html_playwright(urljoin(novel_url, index_url))
-                    try:
-                        data = json.loads(index_html)
-                        raw_chapters = data.get("chapters", [])
-                        for item in raw_chapters:
-                            ch_url = item.get("url")
-                            if ch_url and ch_url not in seen_urls:
-                                label = item.get("label", "")
-                                title_extra = item.get("title", "")
-                                refs.append(ChapterRef(
-                                    index=len(refs),
-                                    title=f"{label} {title_extra}".strip() or f"Chapter {len(refs) + 1}",
-                                    source_url=ch_url,
-                                ))
-                    except (TypeError, ValueError):
-                        pass
-                if not refs:
-                    selectors = _split_selectors(_SEL.get("chapter_list", ".wor-novel-chapters-list a, .wor-novel-chapter-item a"))
-                    links = parse_links(html, selectors, base_url=_BASE)
-                    for title, href in links:
+                    data = json.loads(index_html)
+                    raw_chapters = data.get("chapters", [])
+                    for item in raw_chapters:
+                        ch_url = item.get("url")
+                        if ch_url:
+                            ch_url = urljoin(novel_url, ch_url)
+                        if ch_url and ch_url not in seen_urls:
+                            seen_urls.add(ch_url)
+                            label = item.get("label", "")
+                            title_extra = item.get("title", "")
+                            refs.append(ChapterRef(
+                                index=len(refs),
+                                title=f"{label} {title_extra}".strip() or f"Chapter {len(refs) + 1}",
+                                source_url=ch_url,
+                            ))
+                except Exception:
+                    logger.debug(
+                        "Could not load GalaxyNovels manifest index %s",
+                        index_url,
+                        exc_info=True,
+                    )
+
+            if not refs:
+                selectors = _split_selectors(_SEL.get("chapter_list", ".wor-novel-chapters-list a, .wor-novel-chapter-item a"))
+                if _SELECTOLAX_AVAILABLE:
+                    tree = HTMLParser(html)
+                    items = tree.css(".wor-novel-chapters-list a, .wor-novel-chapter-item a")
+                    for a in items:
+                        href = a.attributes.get("href", "")
+                        if not href or "/chapter" not in href:
+                            continue
+                        href = urljoin(novel_url, href)
+                        if href in seen_urls:
+                            continue
+                        seen_urls.add(href)
+                        refs.append(ChapterRef(
+                            index=len(refs),
+                            title=a.text(strip=True) or f"Chapter {len(refs) + 1}",
+                            source_url=href,
+                        ))
+                else:
+                    for title, href in parse_links(html, selectors, base_url=_BASE):
                         if "/chapter" in href and href not in seen_urls:
                             seen_urls.add(href)
-                            refs.append(ChapterRef(index=len(refs), title=title or f"Chapter {len(refs) + 1}", source_url=href))
+                            refs.append(ChapterRef(
+                                index=len(refs),
+                                title=title or f"Chapter {len(refs) + 1}",
+                                source_url=href,
+                            ))
         return refs
 
     async def get_chapter_text(self, chapter_url: str) -> str:

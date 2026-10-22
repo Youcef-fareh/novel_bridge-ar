@@ -5,12 +5,11 @@ Scrape → Translate → Save, with concurrency limits and resumability.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import inspect
 import logging
-import os
 import weakref
 import httpx
-from datetime import datetime
 from pathlib import Path
 import re
 from typing import Callable, List, Optional
@@ -19,14 +18,13 @@ from urllib.parse import urlparse
 from backend.adapters.base import AdapterRegistry, ChapterRef, SiteAdapter
 from backend.adapters.health import get_source_health
 from backend.adapters.tiers import is_stale
-from backend.config import get_config
+from backend.config import get_config, output_path
 from backend.database import (
     create_job, get_chapters, get_all_glossary_rules, get_novel_glossary,
     get_job, get_novel, get_pending_translation_chapters,
     get_novel_chapter_images as load_novel_chapter_images, refresh_volumes, update_chapter,
     repair_kolnovel_pdf_chapter_duplicates, update_job, update_novel, upsert_chapter,
 )
-from backend.epub_builder import build_epub
 from backend.models import (
     Chapter, ChapterStatus, GlossaryRule, Job, JobStatus, JobType, NovelStatus,
 )
@@ -62,7 +60,8 @@ def _volume_metadata(chapter_ref: ChapterRef) -> tuple[Optional[int], Optional[s
     serial = int(match.group(1))
     return serial, f"Volume {serial}"
 
-_MAX_CONCURRENT = get_config().crawler.max_concurrent_jobs
+def _max_concurrent_jobs() -> int:
+    return get_config().crawler.max_concurrent_jobs
 
 
 def _is_rate_limit_error(error: Exception) -> bool:
@@ -76,7 +75,9 @@ def _is_rate_limit_error(error: Exception) -> bool:
     return "429" in message or "too many requests" in message or "rate limit exceeded" in message
 
 # Each GUI worker owns a separate event loop. Keep one semaphore per loop.
-_semaphores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = weakref.WeakKeyDictionary()
+_semaphores: weakref.WeakKeyDictionary[
+    asyncio.AbstractEventLoop, tuple[int, asyncio.Semaphore]
+] = weakref.WeakKeyDictionary()
 _origin_semaphores: weakref.WeakKeyDictionary[
     asyncio.AbstractEventLoop, dict[str, asyncio.Semaphore]
 ] = weakref.WeakKeyDictionary()
@@ -84,10 +85,13 @@ _origin_semaphores: weakref.WeakKeyDictionary[
 
 def _get_semaphore() -> asyncio.Semaphore:
     loop = asyncio.get_running_loop()
-    semaphore = _semaphores.get(loop)
-    if semaphore is None:
-        semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
-        _semaphores[loop] = semaphore
+    limit = _max_concurrent_jobs()
+    cached = _semaphores.get(loop)
+    if cached is None or cached[0] != limit:
+        semaphore = asyncio.Semaphore(limit)
+        _semaphores[loop] = (limit, semaphore)
+    else:
+        semaphore = cached[1]
     return semaphore
 
 
@@ -429,6 +433,7 @@ async def run_scrape_job(
         raise
     except Exception as e:
         logger.error(f"Scrape job failed: {e}", exc_info=True)
+        update_novel(novel_id, status=NovelStatus.failed)
         update_job(job.id, status=JobStatus.failed, error_message=str(e))
         raise
 
@@ -475,10 +480,30 @@ async def run_translation_job(
         )
         for source, target in get_novel_glossary(novel_id, "ar").items()
     })
-    glossary = list(glossary_by_source.values())
+    # Guard against legacy/invalid DB rows: an empty source_term would
+    # otherwise match at every position and corrupt every translation.
+    glossary = [
+        rule
+        for rule in glossary_by_source.values()
+        if rule.source_term.strip()
+        and rule.source_term.strip() != rule.target_term
+    ]
+    skipped = len(glossary_by_source) - len(glossary)
+    if skipped:
+        logger.warning("Skipped %d glossary rule(s) with empty/no-op source terms", skipped)
 
     pending = get_pending_translation_chapters(novel_id)
     chapter_map = {chapter.id: chapter for chapter in get_chapters(novel_id)}
+    # Snapshot translated contexts once instead of re-querying the whole novel
+    # for every chapter inside the worker loop.
+    chapter_contexts = {
+        chapter.index: chapter.translated_text.strip()
+        for chapter in chapter_map.values()
+        if chapter.status == ChapterStatus.translated
+        and chapter.translated_text
+        and chapter.translated_text.strip()
+    }
+    context_indexes = sorted(chapter_contexts)
     if not chapter_ids:
         import hashlib
 
@@ -496,9 +521,36 @@ async def run_translation_job(
                 if not has_translation or source_changed:
                     pending.append(chapter)
     pending.sort(key=lambda chapter: chapter.index)
+    skipped_requested: list[tuple[int, str]] = []
     if chapter_ids:
         pending_by_id = {chapter.id: chapter for chapter in pending}
+        for requested_id in dict.fromkeys(chapter_ids):
+            if requested_id in pending_by_id:
+                continue
+            chapter = chapter_map.get(requested_id)
+            reason = (
+                "chapter does not belong to this novel"
+                if chapter is None
+                else "chapter already has a current translation"
+                if chapter.status == ChapterStatus.translated
+                else "chapter is not pending translation"
+            )
+            skipped_requested.append((requested_id, reason))
         pending = [pending_by_id[chapter_id] for chapter_id in chapter_ids if chapter_id in pending_by_id]
+
+    # Chapters that never produced source text cannot be translated. Skip them
+    # individually instead of aborting the whole batch as a provider failure.
+    no_source = [chapter for chapter in pending if not (chapter.raw_text or "").strip()]
+    if no_source:
+        for chapter in no_source:
+            update_chapter(chapter.id, status=ChapterStatus.failed)
+            if chapter_ids:
+                skipped_requested.append((chapter.id, "no scraped source text"))
+            logger.warning(
+                "Skipping chapter %s: no scraped source text (scrape it again before translating).",
+                chapter.index,
+            )
+        pending = [chapter for chapter in pending if (chapter.raw_text or "").strip()]
 
     total = len(pending)
     if total == 0:
@@ -506,13 +558,24 @@ async def run_translation_job(
         if job_id is not None and job is None:
             raise ValueError(f"Job {job_id} not found.")
         job = job or create_job(novel_id, JobType.translate)
+        message = "All chapters already have current translations."
+        if no_source:
+            message = (
+                f"Skipped {len(no_source)} chapter(s) with no scraped source text. "
+                "Scrape them again before translating."
+            )
+        if skipped_requested:
+            details = "; ".join(
+                f"{chapter_id} ({reason})" for chapter_id, reason in skipped_requested
+            )
+            message = f"{message} Skipped requested chapters: {details}."
         update_job(
             job.id,
             status=JobStatus.completed,
             progress=100,
             done_items=0,
             total_items=0,
-            current_message="All chapters already have current translations.",
+            current_message=message,
         )
         return get_job_obj(job.id)
 
@@ -534,17 +597,28 @@ async def run_translation_job(
     provider_error_wait_seconds = 80.0
     last_error_msg = ""
     stop_event = asyncio.Event()
-    request_lock = asyncio.Lock()
-    last_request_finished_at = 0.0
+    # This lock only schedules request start times. It is deliberately not held
+    # while the provider call runs, so the semaphore can run requests in parallel.
+    request_start_lock = asyncio.Lock()
+    last_request_started_at = 0.0
+
+    async def wait_for_request_slot() -> None:
+        nonlocal last_request_started_at
+        async with request_start_lock:
+            loop_time = asyncio.get_running_loop().time()
+            elapsed = loop_time - last_request_started_at
+            if elapsed < request_cooldown_seconds:
+                await asyncio.sleep(request_cooldown_seconds - elapsed)
+            last_request_started_at = asyncio.get_running_loop().time()
 
     async def translate_one(chapter: Chapter) -> None:
-        nonlocal last_error_msg, last_request_finished_at
+        nonlocal last_error_msg
         if stop_event.is_set():
             return
         if job_control:
             await job_control.check()
 
-        async with _get_semaphore(), request_lock:
+        async with _get_semaphore():
             if stop_event.is_set():
                 return
 
@@ -554,10 +628,14 @@ async def run_translation_job(
                         await job_control.check()
                     source_text = (chapter.raw_text or "").strip()
                     if not source_text:
-                        raise ValueError(
-                            f"Chapter {chapter.index} has no scraped source text. "
-                            "Run scraping again before translating."
+                        # A single chapter without source text must not abort the
+                        # whole batch (and must not be reported as a provider bug).
+                        update_chapter(chapter.id, status=ChapterStatus.failed)
+                        logger.warning(
+                            "Skipping chapter %s: no scraped source text.",
+                            chapter.index,
                         )
+                        return
                     import hashlib
                     source_hash = hashlib.sha256((chapter.raw_text or "").encode("utf-8")).hexdigest()
                     if (
@@ -570,20 +648,14 @@ async def run_translation_job(
                         )
                     ):
                         return
-                    previous = next(
-                        (
-                            item.translated_text
-                            for item in reversed(get_chapters(novel_id))
-                            if item.index < chapter.index
-                            and item.translated_text
-                            and item.status == ChapterStatus.translated
-                        ),
-                        None,
+                    position = bisect.bisect_left(context_indexes, chapter.index) - 1
+                    previous = (
+                        chapter_contexts[context_indexes[position]]
+                        if position >= 0
+                        else None
                     )
                     context = (previous or "")[-500:]
-                    elapsed = asyncio.get_running_loop().time() - last_request_finished_at
-                    if elapsed < request_cooldown_seconds:
-                        await asyncio.sleep(request_cooldown_seconds - elapsed)
+                    await wait_for_request_slot()
                     update_chapter(chapter.id, status=ChapterStatus.translating)
                     translate_options = {"model": model_name}
                     if "context" in inspect.signature(provider.translate_chapter).parameters:
@@ -593,19 +665,20 @@ async def run_translation_job(
                         glossary,
                         **translate_options,
                     )
-                    last_request_finished_at = asyncio.get_running_loop().time()
                     update_chapter(
                         chapter.id,
                         translated_text=translated,
                         translated_hash=source_hash,
                         status=ChapterStatus.translated,
                     )
+                    if chapter.index not in chapter_contexts:
+                        bisect.insort(context_indexes, chapter.index)
+                    chapter_contexts[chapter.index] = translated
                     return
                 except asyncio.CancelledError:
                     update_chapter(chapter.id, status=ChapterStatus.scraped)
                     raise
                 except Exception as e:
-                    last_request_finished_at = asyncio.get_running_loop().time()
                     last_error_msg = str(e)
                     logger.warning(
                         f"Failed to translate chapter {chapter.index} with {provider.provider_name} "
@@ -665,7 +738,7 @@ async def run_translation_job(
                 if progress_cb:
                     progress_cb(done, total, f"Translated {done}/{total} chapters: {chapter.title[:40]}")
 
-        num_workers = min(_MAX_CONCURRENT, total)
+        num_workers = min(_max_concurrent_jobs(), total)
         worker_tasks = [asyncio.create_task(worker()) for _ in range(num_workers)]
         await asyncio.gather(*worker_tasks)
 
@@ -683,9 +756,25 @@ async def run_translation_job(
                 suggestion=suggestion,
             )
 
-        update_job(job.id, status=JobStatus.completed, progress=100, done_items=total)
+        completion_message = "Translation complete!"
+        if no_source:
+            completion_message += (
+                f" Skipped {len(no_source)} chapter(s) with no scraped source text."
+            )
+        if skipped_requested:
+            details = "; ".join(
+                f"{chapter_id} ({reason})" for chapter_id, reason in skipped_requested
+            )
+            completion_message += f" Skipped requested chapters: {details}."
+        update_job(
+            job.id,
+            status=JobStatus.completed,
+            progress=100,
+            done_items=total,
+            current_message=completion_message,
+        )
         if progress_cb:
-            progress_cb(total, total, "Translation complete!")
+            progress_cb(total, total, completion_message)
         return get_job_obj(job.id)
 
     except asyncio.CancelledError:
@@ -721,7 +810,9 @@ async def run_epub_job(
     if volume is not None:
         chapters = [
             chapter for chapter in chapters
-            if (chapter.volume_serial or chapter.index // 100 + 1) == volume
+            if (
+                chapter.volume_serial if chapter.volume_serial is not None else chapter.index // 100 + 1
+            ) == volume
         ]
 
     # Check if native Arabic source
@@ -753,13 +844,11 @@ async def run_epub_job(
             progress_cb(0, 1, f"Building {artifact_format.upper()} from {available_count} chapters…")
 
         from backend.binder import make_artifact
-        output_dir = Path(os.getenv("OUTPUT_DIR", "output"))
-        images_by_chapter = (
-            load_novel_chapter_images(novel_id)
-            if artifact_format.lower() == "epub"
-            else {}
-        )
-        output_path = await asyncio.get_running_loop().run_in_executor(
+        output_dir = output_path()
+        # Images are needed for EPUB and for any format Calibre converts from
+        # an EPUB (AZW3, PDF, MOBI, DOCX), so always load them.
+        images_by_chapter = load_novel_chapter_images(novel_id)
+        artifact_path = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: make_artifact(
                 novel,
@@ -780,11 +869,11 @@ async def run_epub_job(
             status=JobStatus.completed,
             progress=100,
             done_items=1,
-            output_path=str(output_path),
+            output_path=str(artifact_path),
         )
         if progress_cb:
-            progress_cb(1, 1, f"Artifact saved: {output_path.name}")
-        return get_job_obj(job.id), output_path
+            progress_cb(1, 1, f"Artifact saved: {artifact_path.name}")
+        return get_job_obj(job.id), artifact_path
 
     except asyncio.CancelledError:
         update_job(job.id, status=JobStatus.cancelled, current_message="Cancelled")

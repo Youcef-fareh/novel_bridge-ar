@@ -4,9 +4,8 @@ from __future__ import annotations
 from typing import List
 from urllib.parse import urljoin
 
-from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
+from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter, host_matches
 from backend.adapters.fetcher import (
-    fetch_html,
     fetch_html_playwright,
     parse_chapter_body,
     parse_links,
@@ -22,7 +21,7 @@ class CeneleComAdapter(SiteAdapter):
     is_native_arabic = True
 
     def can_handle(self, url: str) -> bool:
-        return "cenele.com" in url.lower()
+        return host_matches(url, ("cenele.com",))
 
     async def _fetch(self, url: str, wait_for: str = "") -> str:
         return await fetch_html_playwright(url, wait_for)

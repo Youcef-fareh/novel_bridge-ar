@@ -268,6 +268,32 @@ tr.gsel{background:var(--sel)}
 .src-builtin{background:var(--paper2);color:var(--muted)}
 .src-custom{background:var(--bronze-soft);color:var(--bronze)}
 tr.asel{background:var(--sel)}
+.source-settings{display:flex;flex-direction:column;gap:14px;max-width:980px}
+.source-settings .card{padding:18px}
+.source-settings h2{font:600 17px var(--font-d);margin-bottom:8px}
+.source-settings p{font-size:12px;color:var(--muted);margin-bottom:12px}
+.source-pref-fields{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.source-pref-fields .form-row{min-width:170px;margin:0}
+.source-adapter-list{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow:auto}
+.source-adapter-row{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface2);border:1px solid var(--line);border-radius:8px}
+.source-adapter-row input{accent-color:var(--teal)}
+.source-adapter-name{font-weight:600;flex:1}
+.source-adapter-meta{font-size:11px;color:var(--muted)}
+.search-results{display:flex;flex-direction:column;gap:8px;min-height:64px}
+.search-result{display:flex;align-items:center;gap:12px;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--surface2)}
+.search-result img{width:42px;height:58px;object-fit:cover;border-radius:5px;background:var(--paper2)}
+.search-result-info{flex:1;min-width:0}
+.search-result-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-result-site{color:var(--muted);font-size:11px}
+.search-results-message{padding:18px 8px;text-align:center;color:var(--muted);font-size:12px}
+.search-live{display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--surface2);font-size:11.5px;color:var(--muted)}
+.search-live[hidden]{display:none}
+.search-live-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.search-live-source{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-soft)}
+.search-progress{width:100%;height:6px;accent-color:var(--teal)}
+.search-result-group{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
+.search-result-sources{display:flex;flex-wrap:wrap;gap:6px}
+.search-source-button{height:26px;padding:0 8px;font-size:10.5px}
 
 /* ---------- status bar ---------- */
 .statusbar{flex:none;height:32px;background:var(--surface);border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;color:var(--muted)}
@@ -452,6 +478,7 @@ body.rtl .catalog-search input{padding:0 36px 0 12px}
   <button class="tab-btn" data-tab="api"><svg class="ic"><use href="#i-key"/></svg> <span data-i18n="apiKeys">API Keys</span></button>
   <button class="tab-btn" data-tab="website"><svg class="ic"><use href="#i-globe"/></svg> <span data-i18n="addWebsite">Add Website</span></button>
   <button class="tab-btn" data-tab="adapters"><svg class="ic"><use href="#i-plug"/></svg> <span data-i18n="adapters">Adapters</span></button>
+  <button class="tab-btn" data-tab="settings"><svg class="ic"><use href="#i-server"/></svg> Settings</button>
   <button class="tab-btn" data-tab="help"><svg class="ic"><use href="#i-info"/></svg> <span data-i18n="help">Help</span></button>
 </nav>
 
@@ -465,6 +492,7 @@ body.rtl .catalog-search input{padding:0 36px 0 12px}
           <p class="catalog-summary" id="librarySummary"></p>
         </div>
         <div class="catalog-tools">
+          <button class="btn btn-outline" id="btnSourceSearch"><svg class="ic"><use href="#i-search"/></svg> Search Sources</button>
           <label class="catalog-search"><svg class="ic"><use href="#i-search"/></svg><input id="novelSearch" aria-label="Search by title, author, or website" data-i18n-aria-label="searchLibrary" data-i18n-placeholder="searchLibrary" placeholder="Search by title, author, or website" autocomplete="off"></label>
           <select class="catalog-select" id="libraryFilter" aria-label="Filter novels" data-i18n-aria-label="filterLabel">
             <option value="all" data-i18n="filterAll">All novels</option>
@@ -599,6 +627,58 @@ body.rtl .catalog-search input{padding:0 36px 0 12px}
     </div>
   </section>
 
+  <!-- ============ SETTINGS ============ -->
+  <section class="tab-page" id="page-settings">
+    <div class="page-head">
+      <div class="page-title xl"><svg class="ic ic-lg"><use href="#i-server"/></svg> Source Settings</div>
+    </div>
+    <div class="source-settings">
+      <div class="card">
+        <h2>Search defaults</h2>
+        <p>Choose the default language and category for source searches, and set the maximum number of results.</p>
+        <div class="source-pref-fields">
+          <div class="form-row"><label class="flabel" for="sourceLanguagePref">Language direction</label><select class="input" id="sourceLanguagePref"><option value="all">All languages</option><option value="en-ar">English → Arabic (EN-AR)</option><option value="ar-ar">Arabic source (AR-AR)</option></select></div>
+          <div class="form-row"><label class="flabel" for="sourceCategoryPref">Category</label><select class="input" id="sourceCategoryPref"><option value="all">All categories</option><option value="webnovel">Web novels</option><option value="arabic">Arabic novels</option></select></div>
+          <div class="form-row"><label class="flabel" for="searchLimitPref">Maximum search results</label><input class="input" id="searchLimitPref" type="number" min="1" max="50" value="20"></div>
+          <button class="btn btn-primary" id="btnSaveSourcePrefs">Save settings</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Enabled adapters</h2>
+        <p>Disable adapters to exclude them from URL detection and source search. Use the filters to narrow the list.</p>
+        <div class="source-pref-fields" style="margin-bottom:12px">
+          <div class="form-row"><label class="flabel" for="adapterLanguageFilter">Language</label><select class="input" id="adapterLanguageFilter"><option value="all">All languages</option><option value="en-ar">English → Arabic (EN-AR)</option><option value="ar-ar">Arabic source (AR-AR)</option></select></div>
+          <div class="form-row"><label class="flabel" for="adapterCategoryFilter">Category</label><select class="input" id="adapterCategoryFilter"><option value="all">All categories</option><option value="webnovel">Web novels</option><option value="arabic">Arabic novels</option></select></div>
+        </div>
+        <div class="source-adapter-list" id="sourceAdapterList"></div>
+      </div>
+      <div class="card">
+        <h2>Developer diagnostics</h2>
+        <p>Configure local log detail and export a diagnostics archive. Logs are stored on this device.</p>
+        <div class="source-pref-fields">
+          <div class="form-row">
+            <label class="flabel" for="diagnosticLogLevel">Log detail</label>
+            <select class="input" id="diagnosticLogLevel">
+              <option value="DEBUG">Debug</option>
+              <option value="INFO">Info</option>
+              <option value="WARNING">Warnings only</option>
+            </select>
+          </div>
+          <label class="source-adapter-row">
+            <input type="checkbox" id="diagnosticExportEnabled">
+            <span class="source-adapter-name">Allow diagnostics export</span>
+          </label>
+          <button class="btn btn-primary" id="btnSaveDiagnostics">Save developer settings</button>
+          <div class="source-pref-fields" style="flex-direction:row;flex-wrap:wrap">
+            <button class="btn btn-ghost" id="btnExportLogs">Export logs…</button>
+            <button class="btn btn-ghost" id="btnOpenLogs">Open logs folder</button>
+            <button class="btn btn-ghost" id="btnCopyDiagnostics">Copy diagnostics to clipboard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ HELP ============ -->
   <section class="tab-page" id="page-help">
     <div class="help-content">
@@ -634,7 +714,7 @@ const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const now=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 
 /* ================= data ================= */
-const state={selectedId:null,libraryView:'catalog',libraryFilter:'all',librarySort:'recent',checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],adpSel:null,glossSel:new Set(),language:localStorage.getItem('novelbridge-language')||'en'};
+const state={selectedId:null,libraryView:'catalog',libraryFilter:'all',librarySort:'recent',checked:new Set(),job:null,timer:null,serverOn:false,envDirty:false,novels:[],glossary:[],providers:[],adapters:[],sourcePreferences:{search_limit:20,source_language:'all',category:'all'},adpSel:null,glossSel:new Set(),language:localStorage.getItem('novelbridge-language')||'en'};
 const current=()=>state.novels.find(n=>n.id===state.selectedId)||null;
 function avatarLetter(title){return Array.from(String(title||'?').trim())[0]?.toUpperCase()||'?'}
 function coverMarkup(title,url,cls){
@@ -1285,6 +1365,73 @@ function renderAdapters(){
  const sel=state.adapters.find(a=>a.site===state.adpSel);
  $('#btnAdpDelete').disabled=!(sel&&sel.src==='Custom');
 }
+function renderSettings(){
+ const prefs=state.sourcePreferences||{};
+ const language=$('#sourceLanguagePref'),category=$('#sourceCategoryPref'),limit=$('#searchLimitPref');
+ if(language)language.value=prefs.source_language||'all';
+ if(category)category.value=prefs.category||'all';
+ if(limit)limit.value=prefs.search_limit||20;
+ const languageFilter=$('#adapterLanguageFilter')?.value||'all';
+ const categoryFilter=$('#adapterCategoryFilter')?.value||'all';
+ const adapters=state.adapters.filter(adapter=>{
+  const matchesLanguage=languageFilter==='all'||(languageFilter==='ar-ar'?adapter.isNativeArabic:!adapter.isNativeArabic&&String(adapter.lang).toLowerCase()==='english');
+  const matchesCategory=categoryFilter==='all'||adapter.category===categoryFilter;
+  return matchesLanguage&&matchesCategory;
+ });
+ $('#sourceAdapterList').innerHTML=adapters.map(adapter=>`<label class="source-adapter-row">
+  <input type="checkbox" data-adapter-enabled="${esc(adapter.site)}" ${adapter.enabled?'checked':''}>
+  <span class="source-adapter-name">${esc(adapter.site)}</span>
+  <span class="source-adapter-meta">${esc(adapter.lang)} · ${esc(adapter.category==='arabic'?'Arabic novel':'Web novel')}</span>
+ </label>`).join('')||'<div class="search-results-message">No adapters match these filters.</div>';
+ if(window.novelBridge)window.novelBridge.get_diagnostics_settings(raw=>{
+  const diagnostics=JSON.parse(raw);
+  const allowExport=$('#diagnosticExportEnabled'),level=$('#diagnosticLogLevel'),exportButton=$('#btnExportLogs');
+  if(allowExport)allowExport.checked=diagnostics.allow_export;
+  if(level)level.value=diagnostics.log_level;
+  if(exportButton){exportButton.disabled=!diagnostics.allow_export;exportButton.title=diagnostics.allow_export?'':'Enable diagnostics export in developer settings.'}
+ });
+}
+$('#sourceAdapterList').addEventListener('change',e=>{
+ const input=e.target.closest('[data-adapter-enabled]');if(!input)return;
+ if(!window.novelBridge)return toast('The app is still connecting to the backend.','warn');
+ window.novelBridge.set_adapter_enabled(input.dataset.adapterEnabled,input.checked,function(ok){
+  if(!ok){toast('Unable to update adapter settings.','err');refresh();}
+  else{const adapter=state.adapters.find(item=>item.site===input.dataset.adapterEnabled);if(adapter)adapter.enabled=input.checked;renderAdapters();}
+ });
+});
+$('#adapterLanguageFilter').addEventListener('change',renderSettings);
+$('#adapterCategoryFilter').addEventListener('change',renderSettings);
+$('#btnSaveSourcePrefs').addEventListener('click',()=>{
+ const limit=Number($('#searchLimitPref').value);
+ if(!Number.isInteger(limit)||limit<1||limit>50){toast('Maximum search results must be between 1 and 50.','warn');return;}
+ if(!window.novelBridge)return toast('The app is still connecting to the backend.','warn');
+ window.novelBridge.save_source_preferences(limit,$('#sourceLanguagePref').value,$('#sourceCategoryPref').value,function(ok){
+  if(!ok)return toast('Unable to save source settings.','err');
+  state.sourcePreferences={...state.sourcePreferences,search_limit:limit,source_language:$('#sourceLanguagePref').value,category:$('#sourceCategoryPref').value};
+  toast('Source settings saved.');setStatus('Source settings saved.');
+ });
+});
+$('#btnSaveDiagnostics').addEventListener('click',()=>{
+ if(!window.novelBridge)return toast('The app is still connecting to the backend.','warn');
+ window.novelBridge.save_diagnostics_settings($('#diagnosticExportEnabled').checked,$('#diagnosticLogLevel').value,function(ok){
+  if(!ok)return toast('Unable to save developer settings.','err');
+  $('#btnExportLogs').disabled=!$('#diagnosticExportEnabled').checked;
+  $('#btnExportLogs').title=$('#btnExportLogs').disabled?'Enable diagnostics export in developer settings.':'';
+  toast('Developer settings saved.');setStatus('Logging settings saved.');
+ });
+});
+$('#btnExportLogs').addEventListener('click',()=>{
+ if(!window.novelBridge)return toast('The app is still connecting to the backend.','warn');
+ window.novelBridge.export_diagnostic_logs(function(ok){
+  if(ok)toast('Diagnostics archive exported.');
+ });
+});
+$('#btnOpenLogs').addEventListener('click',()=>{
+ if(window.novelBridge)window.novelBridge.open_logs_folder(ok=>{if(!ok)toast('Unable to open the logs folder.','err')});
+});
+$('#btnCopyDiagnostics').addEventListener('click',()=>{
+ if(window.novelBridge)window.novelBridge.copy_diagnostics(ok=>{if(ok)toast('Diagnostics copied to clipboard.')});
+});
 $('#adpBody').addEventListener('click',e=>{
  const r=e.target.closest('tr');if(!r)return;
  state.adpSel=state.adpSel===r.dataset.site?null:r.dataset.site;
@@ -1348,6 +1495,71 @@ setStatus('Ready - Add a novel URL to get started.');
 (function () {
   let bridge;
   let ready = false;
+  let activeSourceSearchId = null;
+  let pendingProviderTest = null;
+  const sourceSearchGroups = new Map();
+
+  function renderSourceSearchResults() {
+    const panel = $('#sourceSearchResults');
+    if (!panel) return;
+    if (!sourceSearchGroups.size) {
+      panel.innerHTML = '<div class="search-results-message">No matches yet. Results will appear as sources finish.</div>';
+      return;
+    }
+    panel.innerHTML = [...sourceSearchGroups.values()].map(group => `
+      <div class="search-result">
+        ${group.cover ? `<img src="${esc(group.cover)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
+        <div class="search-result-group">
+          <div class="search-result-title">${esc(group.title)}</div>
+          <div class="search-result-sources">${group.sources.map(source => `
+            <button class="btn btn-outline search-source-button" data-source-url="${esc(source.url)}" title="${esc(source.site)} — ${esc(source.language)}">${esc(source.site)} · ${esc(source.languageTag)}</button>
+          `).join('')}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  function addSourceSearchBatch(payload) {
+    const language = String(payload.language || 'Unknown');
+    const languageTag = language.toLowerCase().startsWith('ar') ? 'AR' : language.toLowerCase().startsWith('en') ? 'EN' : language;
+    (payload.items || []).forEach(item => {
+      const title = String(item.title || '').trim();
+      const normalized = title.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+      if (!normalized) return;
+      let group = sourceSearchGroups.get(normalized);
+      if (!group) {
+        group = {title, cover: item.cover_url || '', sources: []};
+        sourceSearchGroups.set(normalized, group);
+      }
+      if (!group.cover && item.cover_url) group.cover = item.cover_url;
+      const url = String(item.url || '');
+      if (!url || group.sources.some(source => source.url === url)) return;
+      group.sources.push({
+        site: String(item.source_site || payload.site_id || 'Unknown'),
+        language,
+        languageTag,
+        url
+      });
+    });
+    renderSourceSearchResults();
+  }
+
+  function renderSearchProgress(searchId, progress) {
+    if (searchId !== activeSourceSearchId) return;
+    const live = $('#sourceSearchLive');
+    if (!live) return;
+    live.hidden = false;
+    const total = Number(progress.total || 0);
+    const completed = Number(progress.completed || 0);
+    const groups = sourceSearchGroups.size;
+    $('#sourceSearchProgress').max = Math.max(total, 1);
+    $('#sourceSearchProgress').value = completed;
+    $('#sourceSearchSummary').textContent =
+      `Searching… ${completed} / ${total} sources checked · Showing ${groups} results — ${Math.max(0, total - completed)} sources remaining · ${progress.failed || 0} failed`;
+    $('#sourceSearchCurrent').textContent = progress.current
+      ? `Currently searching: ${progress.current}`
+      : '';
+    renderSourceSearchResults();
+  }
 
   function hydrate(snapshot) {
     state.novels = (snapshot.novels || []).map(n => ({
@@ -1367,10 +1579,13 @@ setStatus('Ready - Add a novel URL to get started.');
       name: p.name, prefix: p.prefix, key: p.key || '', base: p.base_url || '',
       models: p.models || [], enabled: p.configured
     }));
+    state.sourcePreferences = snapshot.source_preferences || state.sourcePreferences;
     state.adapters = (snapshot.adapters || []).map(a => ({
       site: a.site_id, cls: a.class_name, src: a.source,
       baseUrls: a.base_urls || [],
       lang: a.source_language || 'Unknown', isNativeArabic: !!a.is_native_arabic,
+      category: a.category || (a.is_native_arabic ? 'arabic' : 'webnovel'),
+      enabled: a.enabled !== false, canSearch: !!a.can_search,
       method: 'Configured', file: ''
     }));
     if (state.selectedId && !current()) {
@@ -1378,7 +1593,7 @@ setStatus('Ready - Add a novel URL to get started.');
       state.libraryView = 'catalog';
     }
     if (!state.selectedId) state.libraryView = 'catalog';
-    renderSidebar(); renderDetail(); renderGlossary(); renderProviders(); renderAdapters();
+    renderSidebar(); renderDetail(); renderGlossary(); renderProviders(); renderAdapters(); renderSettings();
   }
 
   function refresh(done) {
@@ -1436,7 +1651,10 @@ setStatus('Ready - Add a novel URL to get started.');
   window.deleteNovel = function (nv) {
     if (!nv || !bridge) return;
     if (confirm('Delete “' + nv.title + '” and all chapters?')) {
-      bridge.remove_novel(Number(nv.id), function () { refresh(); setStatus('Novel deleted.'); });
+      bridge.remove_novel(Number(nv.id), function (deleted) {
+        if (deleted) { refresh(); setStatus('Novel deleted.'); }
+        else { setStatus('Cannot delete this novel while a job is running. Cancel the job first.'); }
+      });
     }
   };
   window.delTranslations = function () {
@@ -1459,6 +1677,83 @@ setStatus('Ready - Add a novel URL to get started.');
   };
 
   function wireBackendButtons() {
+    const sourceSearch = $('#btnSourceSearch');
+    if (sourceSearch) sourceSearch.onclick = function () {
+      const prefs = state.sourcePreferences || {};
+      const modal = openModal(`<div class="m-head"><h3>Search Novel Sources</h3><button class="m-x" data-mx>${ic('x')}</button></div>
+        <div class="m-body">
+          <label class="flabel" for="sourceSearchQuery">Novel title</label>
+          <div class="gh-row"><input class="input" id="sourceSearchQuery" maxlength="50" placeholder="Enter a novel title"><button class="btn btn-primary" id="sourceSearchGo">${ic('search')} Search</button></div>
+          <div class="source-pref-fields" style="margin-top:12px">
+            <div class="form-row"><label class="flabel" for="sourceSearchSite">Scraper</label><select class="input" id="sourceSearchSite"><option value="">All enabled search adapters</option>${state.adapters.filter(adapter=>adapter.enabled&&adapter.canSearch).map(adapter=>`<option value="${esc(adapter.site)}">${esc(adapter.site)} (${esc(adapter.lang)})</option>`).join('')}</select></div>
+            <div class="form-row"><label class="flabel" for="sourceSearchLanguage">Language</label><select class="input" id="sourceSearchLanguage"><option value="all">All languages</option><option value="en-ar">English → Arabic (EN-AR)</option><option value="ar-ar">Arabic source (AR-AR)</option></select></div>
+            <div class="form-row"><label class="flabel" for="sourceSearchCategory">Category</label><select class="input" id="sourceSearchCategory"><option value="all">All categories</option><option value="webnovel">Web novels</option><option value="arabic">Arabic novels</option></select></div>
+          </div>
+          <div class="search-live" id="sourceSearchLive" hidden>
+            <div class="search-live-top"><span id="sourceSearchSummary">Preparing search…</span><button class="btn btn-danger btn-sm" id="sourceSearchStop">Stop</button></div>
+            <progress class="search-progress" id="sourceSearchProgress" max="1" value="0"></progress>
+            <div class="search-live-source" id="sourceSearchCurrent"></div>
+          </div>
+          <div id="sourceSearchResults" class="search-results" aria-live="polite"><div class="search-results-message">Enter at least two characters to search enabled adapters.</div></div>
+        </div>`, true);
+      modal.querySelector('#sourceSearchLanguage').value = prefs.source_language || 'all';
+      modal.querySelector('#sourceSearchCategory').value = prefs.category || 'all';
+      const queryInput = modal.querySelector('#sourceSearchQuery');
+      const resultPanel = modal.querySelector('#sourceSearchResults');
+      const runSearch = function () {
+        const query = queryInput.value.trim();
+        if (query.length < 2) { resultPanel.innerHTML = '<div class="search-results-message">Enter at least two characters.</div>'; return; }
+        if (activeSourceSearchId) bridge.cancel_source_search(activeSourceSearchId);
+        const searchId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        activeSourceSearchId = searchId;
+        sourceSearchGroups.clear();
+        resultPanel.innerHTML = '<div class="search-results-message">Searching enabled adapters…</div>';
+        modal.querySelector('#sourceSearchLive').hidden = false;
+        modal.querySelector('#sourceSearchSummary').textContent = 'Starting source search…';
+        modal.querySelector('#sourceSearchCurrent').textContent = '';
+        modal.querySelector('#sourceSearchProgress').value = 0;
+        modal.querySelector('#sourceSearchStop').disabled = false;
+        modal.querySelector('#sourceSearchStop').textContent = 'Stop';
+        modal.querySelector('#sourceSearchGo').disabled = true;
+        bridge.search_sources(
+          searchId,
+          query,
+          modal.querySelector('#sourceSearchSite').value,
+          modal.querySelector('#sourceSearchLanguage').value,
+          modal.querySelector('#sourceSearchCategory').value,
+          prefs.search_limit || 20,
+          function (ok) {
+            if (!ok) {
+              modal.querySelector('#sourceSearchSummary').textContent = 'Search could not be started.';
+              modal.querySelector('#sourceSearchGo').disabled = false;
+            }
+          }
+        );
+      };
+      modal.querySelector('#sourceSearchStop').onclick = function () {
+        if (!activeSourceSearchId) return;
+        bridge.cancel_source_search(activeSourceSearchId);
+        this.disabled = true;
+        this.textContent = 'Stopping…';
+      };
+      modal.querySelector('#sourceSearchGo').onclick = runSearch;
+      queryInput.addEventListener('keydown', event => { if (event.key === 'Enter') runSearch(); });
+      resultPanel.addEventListener('click', event => {
+        const addButton = event.target.closest('[data-source-url]');
+        if (!addButton) return;
+        addButton.disabled = true;
+        bridge.add_novel(addButton.dataset.sourceUrl, function (raw) {
+          const result = JSON.parse(raw);
+          if (!result.ok) { addButton.disabled = false; return toast(result.error || 'Unable to add this novel.', 'err'); }
+          refresh();
+          toast('Novel added to your library.');
+          addButton.disabled = true;
+          addButton.textContent = `Added · ${addButton.title.split(' — ')[0]}`;
+        });
+      });
+      queryInput.focus();
+    };
+
     const providers = $('#provWrap');
     if (providers) {
       const cleanProviders = providers.cloneNode(true);
@@ -1511,7 +1806,7 @@ setStatus('Ready - Add a novel URL to get started.');
           const modelName = row?.dataset.m || selected.models[0] || '';
           button.disabled = true;
           button.innerHTML = `${ic('refresh','ic-sm spin')} Testing...`;
-          bridge.test_provider(selected.prefix, modelName, function (raw) {
+          pendingProviderTest = function (raw) {
             button.disabled = false;
             button.innerHTML = action === 'test'
               ? `${ic('play','ic-sm')} Test Provider`
@@ -1519,6 +1814,20 @@ setStatus('Ready - Add a novel URL to get started.');
             const result = JSON.parse(raw);
             if (result.ok) toast(`${selected.name} responded successfully using ${result.model}.`, 'info');
             else infoBox('Provider test failed', result.error || 'The provider did not return a valid response.', 'alert', 'red');
+          };
+          bridge.test_provider(selected.prefix, modelName, function (raw) {
+            // Fast validation errors come back synchronously; {"pending": true}
+            // means the live request is running on a worker thread and the
+            // result will arrive via provider_test_finished.
+            const result = JSON.parse(raw);
+            if (!result.pending && !result.ok) {
+              pendingProviderTest = null;
+              button.disabled = false;
+              button.innerHTML = action === 'test'
+                ? `${ic('play','ic-sm')} Test Provider`
+                : `${ic('play','ic-sm')}`;
+              infoBox('Provider test failed', result.error || 'The provider did not return a valid response.', 'alert', 'red');
+            }
           });
         } else if (action === 'edit') {
           promptModal('Edit Provider — ' + selected.name, 'Base URL', selected.base, function (value) {
@@ -1651,7 +1960,47 @@ setStatus('Ready - Add a novel URL to get started.');
     });
     bridge.job_finished.connect(function (kind) { hideJob(); finishMessage(kind); });
     bridge.job_error.connect(function (message) { hideJob(); refresh(); infoBox('Operation failed', esc(message), 'alert', 'red'); });
+    bridge.provider_test_finished.connect(function (raw) {
+      const handler = pendingProviderTest;
+      pendingProviderTest = null;
+      if (handler) handler(raw);
+    });
+    bridge.source_search_progress.connect(function (searchId, raw) {
+      renderSearchProgress(searchId, JSON.parse(raw));
+    });
+    bridge.source_search_results.connect(function (searchId, raw) {
+      if (searchId !== activeSourceSearchId || !$('#sourceSearchResults')) return;
+      addSourceSearchBatch(JSON.parse(raw));
+    });
+    bridge.source_search_finished.connect(function (searchId, raw) {
+      if (searchId !== activeSourceSearchId) return;
+      const result = JSON.parse(raw);
+      const live = $('#sourceSearchLive');
+      if (!live) return;
+      const failed = Number(result.failed || 0);
+      const cancelled = !!result.cancelled;
+      $('#sourceSearchSummary').textContent =
+        `Showing ${sourceSearchGroups.size} results — ${cancelled ? 'Search stopped' : 'Search complete'} · ${failed} sources failed`;
+      $('#sourceSearchCurrent').textContent = '';
+      $('#sourceSearchProgress').value = $('#sourceSearchProgress').max;
+      $('#sourceSearchStop').disabled = true;
+      $('#sourceSearchStop').textContent = cancelled ? 'Stopped' : 'Done';
+      $('#sourceSearchGo').disabled = false;
+      renderSourceSearchResults();
+      activeSourceSearchId = null;
+    });
+    bridge.source_search_error.connect(function (searchId, message) {
+      if (searchId !== activeSourceSearchId) return;
+      const summary = $('#sourceSearchSummary');
+      if (summary) summary.textContent = `Search failed: ${message}`;
+      const stop = $('#sourceSearchStop');
+      if (stop) stop.disabled = true;
+      const start = $('#sourceSearchGo');
+      if (start) start.disabled = false;
+      activeSourceSearchId = null;
+    });
     bridge.state_changed.connect(refresh);
+    window.novelBridge = bridge;
     wireBackendButtons();
     refresh();
   });

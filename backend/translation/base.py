@@ -10,6 +10,71 @@ from typing import List
 from backend.models import GlossaryRule
 
 
+class TruncatedOutputError(RuntimeError):
+    """The provider stopped generating because it hit its output-token limit.
+
+    Raised instead of silently returning a cut-off translation, which would
+    publish incomplete chapters as if they were complete.
+    """
+
+
+def is_streaming_unsupported_error(error: Exception) -> bool:
+    """Return True only when a streaming request failed for a streaming-specific reason.
+
+    Falling back to a non-streaming request for auth/quota/network errors would
+    issue a duplicate paid request and hide the real failure.
+    """
+    status = getattr(error, "status_code", None)
+    if status is None:
+        response = getattr(error, "response", None)
+        status = getattr(response, "status_code", None)
+    if status in (400, 404, 405, 415, 422):
+        return True
+
+    message = str(error).lower()
+    markers = (
+        "does not support stream",
+        "streaming is not supported",
+        "stream is not supported",
+        "unknown parameter: stream",
+        "stream_options",
+        "unsupported parameter",
+        "unrecognized request argument",
+    )
+    return any(marker in message for marker in markers)
+
+
+def is_retryable_error(error: Exception) -> bool:
+    """Return True only for transient errors worth retrying.
+
+    Retrying auth failures (401), bad requests (400/404/422) or invalid keys
+    just burns paid calls on requests that can never succeed and delays the
+    user-visible failure. Only network-level errors, timeouts, 408, 429 and
+    5xx responses are worth a retry.
+    """
+    if isinstance(error, (TimeoutError, ConnectionError)):
+        return True
+    status = getattr(error, "status_code", None)
+    if status is None:
+        response = getattr(error, "response", None)
+        status = getattr(response, "status_code", None)
+    if status is not None:
+        return status in (408, 429) or status >= 500
+    # No HTTP status (connection reset, DNS failure, SDK-internal timeouts…):
+    # treat as transient.
+    message = str(error).lower()
+    transient_markers = (
+        "timed out",
+        "timeout",
+        "connection",
+        "temporarily unavailable",
+        "rate limit",
+        "overloaded",
+        "server error",
+    )
+    return any(marker in message for marker in transient_markers)
+
+
 def build_system_prompt(glossary: List[GlossaryRule], context: Optional[str] = None) -> str:
     """Build the system prompt with glossary rules injected."""
     glossary_block = ""
@@ -109,14 +174,25 @@ def apply_glossary_postpass(text: str, glossary: List[GlossaryRule]) -> str:
     clobber substrings inside unrelated words; falls back to a plain
     (non-bounded) match for terms containing non-word characters
     (e.g. already-Arabic terms, terms with punctuation/spacing).
+
+    The replacement is always treated as literal text: target terms are
+    substituted via a lambda so regex template escapes (\\1, \\n, \\g<0>…)
+    can never crash the pass or mangle the output. Rules with empty or
+    whitespace-only source terms are skipped — a previously empty
+    re.escape("") pattern would match at every position and corrupt the
+    entire chapter.
     """
     for rule in glossary:
-        escaped = re.escape(rule.source_term)
-        if re.match(r"^\w+$", rule.source_term, re.UNICODE):
+        source = rule.source_term.strip()
+        if not source or source == rule.target_term:
+            continue
+        escaped = re.escape(source)
+        if re.match(r"^\w+$", source, re.UNICODE):
             pattern = re.compile(rf"\b{escaped}\b", re.IGNORECASE | re.UNICODE)
         else:
             pattern = re.compile(escaped, re.IGNORECASE | re.UNICODE)
-        text = pattern.sub(rule.target_term, text)
+        # Literal replacement: never interpret the target as a regex template.
+        text = pattern.sub(lambda _m, _t=rule.target_term: _t, text)
     return text
 
 

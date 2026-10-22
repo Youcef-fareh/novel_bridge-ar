@@ -4,7 +4,7 @@ NovelBridge — SQLite database engine, session helpers, and CRUD operations.
 from __future__ import annotations
 
 import json
-import os
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,9 +19,9 @@ from sqlalchemy import func
 from backend.models import (
     Chapter, ChapterImage, ChapterStatus, GlossaryRule, NovelGlossary, Volume,
     Job, JobStatus, JobType,
-    Novel, NovelStatus,
+    Novel,
 )
-from backend.config import get_config
+from backend.config import get_config, resolve_path
 
 load_dotenv()
 
@@ -106,12 +106,17 @@ def sync_glossary_from_config(overwrite: bool = False) -> int:
     Inserts missing rules, and if overwrite=True, updates existing ones.
     Returns the total number of rules processed.
     """
-    config_path = Path("config/glossary.json")
+    config_path = resolve_path("config/glossary.json")
     if not config_path.exists():
         return 0
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, json.JSONDecodeError) as exc:
+        import logging
+
+        logging.getLogger("novelbridge.database").warning(
+            "Could not load glossary configuration at %s: %s", config_path, exc
+        )
         return 0
 
     rules_data = data.get("rules", [])
@@ -201,11 +206,27 @@ def update_novel(novel_id: int, **kwargs) -> Optional[Novel]:
         return novel
 
 
-def delete_novel(novel_id: int) -> bool:
+def delete_novel(novel_id: int, *, force: bool = False) -> bool:
+    """Delete a novel and all of its related rows.
+
+    Returns ``False`` when the novel does not exist or when a job is actively
+    running for it (deleting mid-run leaves the worker writing to missing rows).
+    Pass ``force=True`` to delete anyway.
+    """
     image_paths: list[Path] = []
     with Session(_engine) as session:
         if session.get(Novel, novel_id) is None:
             return False
+
+        if not force:
+            running_job = session.exec(
+                select(Job.id).where(
+                    Job.novel_id == novel_id,
+                    Job.status == JobStatus.running,
+                )
+            ).first()
+            if running_job is not None:
+                return False
 
         chapter_ids = select(Chapter.id).where(Chapter.novel_id == novel_id)
         image_paths = [
@@ -246,6 +267,8 @@ def upsert_chapter(
 ) -> Chapter:
     stale_image_paths: list[Path] = []
     with Session(_engine) as session:
+        if session.get(Novel, novel_id) is None:
+            raise ValueError(f"Novel {novel_id} no longer exists.")
         existing = session.exec(
             select(Chapter).where(Chapter.novel_id == novel_id, Chapter.index == index)
         ).first()
@@ -565,6 +588,14 @@ def get_novel_glossary(novel_id: int, language: str = "ar") -> dict[str, str]:
         return terms
 
 
+_GLOSSARY_LOCK = threading.Lock()
+"""Serializes glossary read-modify-write cycles.
+
+Two concurrent set/delete calls could both read the same terms_json and the
+last commit would silently drop the other's change.
+"""
+
+
 def set_novel_glossary_term(
     novel_id: int, source_term: str, target_term: str, language: str = "ar"
 ) -> dict[str, str]:
@@ -572,7 +603,7 @@ def set_novel_glossary_term(
     target_term = target_term.strip()
     if not source_term or not target_term:
         raise ValueError("Glossary source and target terms must not be empty")
-    with Session(_engine) as session:
+    with _GLOSSARY_LOCK, Session(_engine) as session:
         novel = session.get(Novel, novel_id)
         if not novel:
             raise ValueError(f"Novel {novel_id} not found")
@@ -600,7 +631,7 @@ def set_novel_glossary_term(
 def delete_novel_glossary_term(
     novel_id: int, source_term: str, language: str = "ar"
 ) -> bool:
-    with Session(_engine) as session:
+    with _GLOSSARY_LOCK, Session(_engine) as session:
         glossary = session.exec(
             select(NovelGlossary).where(
                 NovelGlossary.novel_id == novel_id,
@@ -629,6 +660,10 @@ def get_all_glossary_rules() -> List[GlossaryRule]:
 
 
 def add_glossary_rule(source_term: str, target_term: str, notes: str = "") -> GlossaryRule:
+    source_term = (source_term or "").strip()
+    target_term = (target_term or "").strip()
+    if not source_term or not target_term:
+        raise ValueError("Glossary source and target terms must not be empty")
     with Session(_engine) as session:
         rule = GlossaryRule(source_term=source_term, target_term=target_term, notes=notes)
         session.add(rule)
@@ -880,8 +915,41 @@ def cancel_job(job_id: int) -> Optional[Job]:
     return update_job(job_id, status=JobStatus.cancelled, current_message="Cancelled")
 
 
+def requeue_job(job_id: int, message: str = "Requeued for another worker") -> Optional[Job]:
+    """Return an in-flight (running/paused) job to the queue, keeping chapter work.
+
+    Used on graceful scheduler shutdown so an interrupted job is retried
+    instead of being terminally cancelled (chapter progress is preserved
+    because chapter rows, not job counters, hold the completed work).
+    """
+    now = datetime.now(timezone.utc)
+    with _engine.begin() as conn:
+        conn.exec_driver_sql(
+            """
+            UPDATE job
+            SET status = ?, worker_id = NULL, lease_expires_at = NULL,
+                heartbeat_at = NULL, current_message = ?, updated_at = ?
+            WHERE id = ? AND status IN (?, ?)
+            """,
+            (
+                JobStatus.queued.value,
+                message,
+                now.isoformat(),
+                job_id,
+                JobStatus.running.value,
+                JobStatus.paused.value,
+            ),
+        )
+    return get_job(job_id)
+
+
 def recover_interrupted_jobs(lease_grace_seconds: int = 0) -> int:
-    """Requeue jobs whose worker lease expired, preserving completed chapter work."""
+    """Requeue jobs whose worker lease expired, preserving completed chapter work.
+
+    This covers both running jobs and jobs that were paused when their process
+    died. A job paused while still queued (never started) has no lease and is
+    deliberately left paused so a user pause survives a restart.
+    """
     now = datetime.now(timezone.utc)
     stale_before = now - timedelta(seconds=max(lease_grace_seconds, 0))
     with _engine.begin() as conn:
@@ -891,7 +959,10 @@ def recover_interrupted_jobs(lease_grace_seconds: int = 0) -> int:
             SET status = ?, worker_id = NULL, lease_expires_at = NULL,
                 heartbeat_at = NULL, current_message = 'Recovered after worker interruption',
                 updated_at = ?
-            WHERE status = ?
+            WHERE (
+                  status = ?
+                  OR (status = ? AND started_at IS NOT NULL)
+              )
               AND (
                   lease_expires_at IS NULL
                   OR julianday(lease_expires_at) <= julianday(?)
@@ -901,6 +972,7 @@ def recover_interrupted_jobs(lease_grace_seconds: int = 0) -> int:
                 JobStatus.queued.value,
                 now.isoformat(),
                 JobStatus.running.value,
+                JobStatus.paused.value,
                 stale_before.isoformat(),
             ),
         )
@@ -908,10 +980,24 @@ def recover_interrupted_jobs(lease_grace_seconds: int = 0) -> int:
 
 
 def get_jobs_for_scrub(retention_days: int = 90) -> tuple[int, int]:
-    """Delete old terminal jobs and mark jobs exceeding the maximum runtime failed."""
+    """Delete old terminal jobs and fail genuinely-dead long-running jobs.
+
+    A running job is only marked failed when it is BOTH older than the 16-hour
+    runtime limit AND its heartbeat is stale (no heartbeat within the last
+    hour). Checking started_at alone used to force-fail healthy jobs that were
+    actively heartbeating — including jobs running fine in a second process —
+    and made user-paused jobs permanently unresumable. Paused jobs are never
+    failed here: those with a stale heartbeat are requeued (resumable) instead,
+    while a healthy heartbeat keeps a user's pause intact.
+
+    Timestamp comparisons use julianday() — SQLite stores datetimes with a
+    space separator while datetime.isoformat() emits a 'T', so plain string
+    comparison would misread every comparison.
+    """
     now = datetime.now(timezone.utc)
     finished_before = (now - timedelta(days=retention_days)).isoformat()
     long_running_before = (now - timedelta(hours=16)).isoformat()
+    heartbeat_stale_before = (now - timedelta(hours=1)).isoformat()
     with _engine.begin() as conn:
         cancelled = conn.exec_driver_sql(
             """
@@ -919,18 +1005,39 @@ def get_jobs_for_scrub(retention_days: int = 90) -> tuple[int, int]:
             SET status = ?, error_message = 'Job exceeded the 16-hour runtime limit',
                 current_message = 'Stopped by scheduler scrubber', finished_at = ?,
                 worker_id = NULL, lease_expires_at = NULL, updated_at = ?
-            WHERE status IN (?, ?)
-              AND started_at IS NOT NULL AND started_at <= ?
+            WHERE status = ?
+              AND started_at IS NOT NULL AND julianday(started_at) <= julianday(?)
+              AND julianday(COALESCE(heartbeat_at, lease_expires_at, '1970-01-01'))
+                  <= julianday(?)
             """,
             (
                 JobStatus.failed.value,
                 now.isoformat(),
                 now.isoformat(),
                 JobStatus.running.value,
-                JobStatus.paused.value,
                 long_running_before,
+                heartbeat_stale_before,
             ),
         ).rowcount
+        # Paused jobs that outlived their heartbeat are requeued (resumable)
+        # rather than terminally failed — the user can start them again.
+        requeued_paused = conn.exec_driver_sql(
+            """
+            UPDATE job
+            SET status = ?, worker_id = NULL, lease_expires_at = NULL,
+                current_message = 'Requeued by scheduler scrubber', updated_at = ?
+            WHERE status = ? AND started_at IS NOT NULL
+              AND julianday(COALESCE(heartbeat_at, lease_expires_at, '1970-01-01'))
+                  <= julianday(?)
+            """,
+            (
+                JobStatus.queued.value,
+                now.isoformat(),
+                JobStatus.paused.value,
+                heartbeat_stale_before,
+            ),
+        ).rowcount
+        cancelled += requeued_paused
         deleted = conn.exec_driver_sql(
             """
             DELETE FROM job

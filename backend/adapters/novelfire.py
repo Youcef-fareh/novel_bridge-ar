@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import List
 from urllib.parse import quote_plus, urljoin, urlparse
 
@@ -14,18 +13,18 @@ try:
     _SELECTOLAX_AVAILABLE = True
 except ImportError:
     _SELECTOLAX_AVAILABLE = False
-    from bs4 import BeautifulSoup
 
-from backend.adapters.base import ChapterRef, NovelMeta, SearchResult, SiteAdapter
+from backend.adapters.base import ChapterRef, NovelMeta, SearchResult, host_matches
 from backend.adapters.fetcher import (
-    fetch_html, parse_chapter_body, parse_cover_url, parse_links, parse_text
+    fetch_html, parse_links
 )
+from backend.config import resolve_path
 
 _SITE_ID = "novelfire"
 _BASE    = "https://novelfire.net"
 
 # Load selectors from config
-_cfg_path = Path("config/sites.json")
+_cfg_path = resolve_path("config/sites.json")
 _SEL: dict = {}
 if _cfg_path.exists():
     _SEL = json.loads(_cfg_path.read_text(encoding="utf-8")).get(_SITE_ID, {}).get("selectors", {})
@@ -34,6 +33,22 @@ if _cfg_path.exists():
 def _split_selectors(value: str) -> list[str]:
     """Split a comma-separated CSS selector string."""
     return [s.strip() for s in value.split(",") if s.strip()]
+
+
+# Pagination/TOC/list links whose path merely CONTAINS "/chapter" (e.g.
+# "/novel/x/chapters?page=2" — the endswith("/chapters") check misses it
+# because of the query string) used to be collected as chapters.
+_NON_CHAPTER_HREF_RE = re.compile(
+    r"[?&]page|/chapters(?:[/?#]|$)|chapter-list|/toc(?:[/?#]|$)|/table-of-contents",
+    re.IGNORECASE,
+)
+
+
+def _is_chapter_href(href: str) -> bool:
+    """True only for canonical chapter URLs, excluding pagination/TOC links."""
+    if not href or "/chapter" not in href:
+        return False
+    return _NON_CHAPTER_HREF_RE.search(href) is None
 
 
 from backend.adapters.soup_template import SoupAdapter
@@ -54,7 +69,7 @@ class NovelFireAdapter(SoupAdapter):
     chapter_body_selectors = ["#chapter-container", ".chapter-content", ".text-left"]
 
     def can_handle(self, url: str) -> bool:
-        return "novelfire.net" in url or "novelfire.com" in url or "novelfire.docs" in url
+        return host_matches(url, ("novelfire.net", "novelfire.com"))
 
     async def search(self, query: str, limit: int = 20) -> list[SearchResult]:
         from bs4 import BeautifulSoup
@@ -153,7 +168,7 @@ class NovelFireAdapter(SoupAdapter):
                     if not a_tag:
                         continue
                     href = a_tag.attributes.get("href", "")
-                    if not href or "/chapter" not in href or href.endswith("/chapters") or href in seen_urls:
+                    if not _is_chapter_href(href) or href in seen_urls:
                         continue
                     seen_urls.add(href)
                     if href.startswith("/"):
@@ -175,7 +190,7 @@ class NovelFireAdapter(SoupAdapter):
             else:
                 links = parse_links(html, selectors, base_url=_BASE)
                 for text, href in links:
-                    if href and "/chapter" in href and not href.endswith("/chapters") and href not in seen_urls:
+                    if _is_chapter_href(href) and href not in seen_urls:
                         seen_urls.add(href)
                         refs.append(ChapterRef(index=len(refs), title=text.strip() or f"Chapter {len(refs)+1}", source_url=href))
                         new_on_page += 1

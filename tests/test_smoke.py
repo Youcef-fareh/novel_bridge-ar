@@ -317,7 +317,7 @@ def test_ranovel_honeypot_cleaning_removes_code_block_divs():
 
 def test_ranovel_honeypot_cleaning_strips_watermark_lines_from_text():
     """Lines containing watermark patterns must be dropped from the final text output."""
-    from backend.adapters.ranovel import _WATERMARK_RE
+    from backend.adapters.ranovel import _is_watermark_paragraph
 
     lines = [
         "The weather is really crappy.",
@@ -327,7 +327,7 @@ def test_ranovel_honeypot_cleaning_strips_watermark_lines_from_text():
         "Standing before the corpse of a giant monster.",
         "* * * Ranovel dot com * * *",
     ]
-    clean = [ln for ln in lines if not _WATERMARK_RE.search(ln)]
+    clean = [ln for ln in lines if not _is_watermark_paragraph(ln)]
     assert clean == [
         "The weather is really crappy.",
         "A battlefield dyed in blood-red skies.",
@@ -417,6 +417,111 @@ async def test_galaxy_expands_initial_chapter_batch(monkeypatch):
     assert len(refs) == 61
     assert refs[0].title == "Chapter 1"
     assert refs[-1].title == "Chapter 61"
+
+
+@pytest.mark.asyncio
+async def test_galaxy_manifest_joins_relative_chapter_urls(monkeypatch):
+    import backend.adapters.galaxynovels as galaxy_module
+
+    novel_url = "https://galaxynovels.com/novel/example/"
+    html = '<div class="wor-novel-chapters-wrap" data-manifest-url="/api/chapters.json"></div>'
+    manifest = '{"chapters": [{"url": "/chapter-1/", "label": "Chapter 1"}]}'
+
+    monkeypatch.setattr(galaxy_module, "_fetch_galaxy_html", AsyncMock(return_value=html))
+    monkeypatch.setattr(galaxy_module, "fetch_html", AsyncMock(return_value=manifest))
+
+    refs = await galaxy_module.GalaxyNovelsAdapter().get_chapter_list(novel_url)
+
+    assert refs[0].source_url == "https://galaxynovels.com/chapter-1/"
+
+
+@pytest.mark.asyncio
+async def test_galaxy_playwright_fallback_runs_with_selectolax(monkeypatch):
+    import backend.adapters.galaxynovels as galaxy_module
+
+    if not galaxy_module._SELECTOLAX_AVAILABLE:
+        pytest.skip("selectolax is not installed")
+
+    novel_url = "https://galaxynovels.com/novel/example/"
+    manifest = '{"chapters": [{"url": "/chapter-1/", "label": "Chapter 1"}]}'
+
+    monkeypatch.setattr(
+        galaxy_module, "_fetch_galaxy_html", AsyncMock(return_value="<html></html>")
+    )
+    monkeypatch.setattr(
+        galaxy_module,
+        "fetch_html_playwright",
+        AsyncMock(side_effect=[
+            '<div class="wor-novel-chapters-wrap" data-manifest-url="/api/chapters.json"></div>',
+            manifest,
+        ]),
+    )
+
+    refs = await galaxy_module.GalaxyNovelsAdapter().get_chapter_list(novel_url)
+
+    assert [ref.title for ref in refs] == ["Chapter 1"]
+    assert refs[0].source_url == "https://galaxynovels.com/chapter-1/"
+
+
+@pytest.mark.asyncio
+async def test_soup_adapter_follows_next_page_link_from_page_one(monkeypatch):
+    import backend.adapters.soup_template as soup_module
+
+    class PagedAdapter(soup_module.SoupAdapter):
+        site_id = ""
+        chapter_list_selectors = ["a.chapter"]
+        pagination_next_selectors = ["a.next"]
+
+    pages = {
+        "https://example.org/novel": (
+            '<a class="chapter" href="/chapter-1">One</a>'
+            '<a class="next" href="/novel?page=2">Next</a>'
+        ),
+        "https://example.org/novel?page=2": (
+            '<a class="chapter" href="/chapter-2">Two</a>'
+        ),
+    }
+
+    async def fake_fetch(url: str, site_id: str = "") -> str:
+        return pages[url]
+
+    monkeypatch.setattr(soup_module, "fetch_html", fake_fetch)
+
+    refs = await PagedAdapter().get_chapter_list("https://example.org/novel")
+
+    assert [ref.source_url for ref in refs] == [
+        "https://example.org/chapter-1",
+        "https://example.org/chapter-2",
+    ]
+
+
+def test_wordpress_select_chapter_refs_is_synchronous():
+    from backend.adapters.templates.wordpress import WordpressAdapter
+
+    html = (
+        '<ul><li class="wp-manga-chapter">'
+        '<a href="https://example.org/chapter-1">Chapter 1</a></li></ul>'
+    )
+
+    refs = WordpressAdapter().select_chapter_refs(html, "https://example.org/novel")
+
+    assert isinstance(refs, list)
+    assert [ref.title for ref in refs] == ["Chapter 1"]
+
+
+def test_streaming_fallback_only_for_stream_specific_errors():
+    from backend.translation.base import is_streaming_unsupported_error
+
+    class StatusError(Exception):
+        def __init__(self, status_code: int):
+            super().__init__(f"HTTP {status_code}")
+            self.status_code = status_code
+
+    assert is_streaming_unsupported_error(StatusError(400))
+    assert is_streaming_unsupported_error(StatusError(422))
+    assert not is_streaming_unsupported_error(StatusError(429))
+    assert not is_streaming_unsupported_error(StatusError(401))
+    assert not is_streaming_unsupported_error(RuntimeError("connection reset by peer"))
 
 
 @pytest.mark.asyncio
@@ -786,7 +891,7 @@ async def test_job_control():
 
 # ── Test: TokenRouter Provider & Provider Factory ─────────────────────────────
 def test_tokenrouter_provider(monkeypatch):
-    from backend.translation import TokenRouterProvider, get_provider, ProviderFailureError
+    from backend.translation import TokenRouterProvider, get_provider
 
     # Test unavailable without key
     monkeypatch.setenv("TOKENROUTER_API_KEY", "")
@@ -1092,8 +1197,7 @@ async def test_gemini_sends_entire_chapter_in_one_request(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_translation_pipeline_failure_stops_and_suggests(tmp_path, monkeypatch):
-    from datetime import datetime, timezone
-    from backend.models import Novel, Chapter, NovelStatus, ChapterStatus, JobStatus
+    from backend.models import ChapterStatus
     from backend.pipeline import run_translation_job
     from backend.translation import ProviderFailureError, TokenRouterProvider
     import backend.database as db_module

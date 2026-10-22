@@ -138,6 +138,15 @@ async def _run(
             tab = await browser.get(url)
             await asyncio.sleep(1)
             html = await tab.get_content()
+        # Report the URL the browser actually ended on (post-redirect) so
+        # callers can detect silent redirects instead of trusting the input.
+        try:
+            final_url = await tab.evaluate("window.location.href", return_by_value=True)
+        except Exception:
+            final_url = ""
+        if not isinstance(final_url, str):
+            final_url = ""
+        Path(out_path + ".final_url").write_text(final_url, encoding="utf-8")
         lowered = html.lower()
         if (
             "unusual reading activity" in lowered

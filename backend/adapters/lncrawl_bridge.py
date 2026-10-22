@@ -20,7 +20,13 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
-from backend.adapters.base import AdapterRegistry, ChapterRef, NovelMeta, SiteAdapter
+from backend.adapters.base import (
+    AdapterRegistry,
+    ChapterRef,
+    NovelMeta,
+    SearchResult,
+    SiteAdapter,
+)
 
 logger = logging.getLogger("novelbridge.adapters.lncrawl")
 
@@ -148,6 +154,52 @@ class LNCrawlBridgeAdapter(SiteAdapter):
         self._chapter_novel_urls: dict[str, str] = {}
         self._source_chapters: dict[str, Any] = {}
         self._cache_lock = threading.Lock()
+
+    def _search(self, query: str, limit: int) -> list[SearchResult]:
+        crawler = self.crawler_cls()
+        try:
+            self._initialize_crawler(crawler)
+            results = crawler.search(query)
+            allowed_hosts = {
+                (urlparse(base if "://" in base else f"https://{base}").hostname or "").lower()
+                for base in self._base_urls
+            }
+            found: list[SearchResult] = []
+            seen: set[str] = set()
+            for result in results or []:
+                url = urljoin(
+                    self._base_urls[0] if self._base_urls else "",
+                    _as_text(_get_value(result, "url", "source_url")),
+                )
+                parsed = urlparse(url)
+                host = (parsed.hostname or "").lower()
+                if (
+                    parsed.scheme not in {"http", "https"}
+                    or not any(host == base or host.endswith(f".{base}") for base in allowed_hosts)
+                    or url in seen
+                ):
+                    continue
+                title = _as_text(_get_value(result, "title", "name"))
+                if not title:
+                    continue
+                seen.add(url)
+                cover_url = _as_text(_get_value(result, "cover_url", "cover"))
+                found.append(SearchResult(
+                    title=title,
+                    url=url,
+                    source_site=self.site_id,
+                    cover_url=urljoin(url, cover_url) if cover_url else None,
+                ))
+                if len(found) >= limit:
+                    break
+            return found
+        finally:
+            self._close_crawler(crawler)
+
+    async def search(self, query: str, limit: int = 20) -> list[SearchResult]:
+        if not self.can_search:
+            return []
+        return await asyncio.to_thread(self._search, query, max(1, min(limit, 50)))
 
     def can_handle(self, url: str) -> bool:
         requested = urlparse(url)
@@ -368,10 +420,16 @@ def _load_source_module(root: Path, path: Path) -> ModuleType:
 
 def _default_lncrawl_root() -> Optional[Path]:
     project_root = Path(__file__).resolve().parents[2]
+    executable_dir = Path(sys.executable).resolve().parent
+    frozen_data_dir = Path(
+        getattr(sys, "_MEIPASS", executable_dir)
+    ).resolve()
     candidates = (
         project_root / "lightnovel-crawler-dev",
         project_root.parent / "lightnovel-crawler-dev",
-        Path(sys.executable).resolve().parent / "lightnovel-crawler-dev",
+        frozen_data_dir / "lightnovel-crawler-dev",
+        executable_dir / "lightnovel-crawler-dev",
+        executable_dir / "_internal" / "lightnovel-crawler-dev",
     )
     return next(
         (
@@ -591,6 +649,10 @@ def register_lncrawl_adapters(
                 novel_cls,
                 chapter_cls,
                 source_language={"en": "English", "ar": "Arabic"}[language],
+            )
+            adapter.can_search = (
+                callable(getattr(value, "search", None))
+                and getattr(value, "search") is not getattr(crawler_base, "search", None)
             )
             AdapterRegistry.register(adapter)
             registered += 1

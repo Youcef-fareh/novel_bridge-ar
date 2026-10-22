@@ -7,7 +7,6 @@ import logging
 import os
 import threading
 import uuid
-from pathlib import Path
 from typing import Any, Callable, Optional
 
 from backend.database import (
@@ -17,6 +16,7 @@ from backend.database import (
     get_job,
     heartbeat_job,
     recover_interrupted_jobs,
+    requeue_job,
     update_job,
 )
 from backend.config import get_config
@@ -25,6 +25,16 @@ from backend.models import Job, JobStatus, JobType
 logger = logging.getLogger("novelbridge.scheduler")
 
 ProgressCallback = Callable[[int, int, str], None]
+
+
+class JobCancelledError(RuntimeError):
+    """A scheduled job reached a terminal 'cancelled' state.
+
+    Raised by run_job/wait_for_job as a normal exception — raising
+    asyncio.CancelledError here would be interpreted as cancellation of the
+    *calling* task (e.g. an HTTP request), dropping the client's connection
+    without a proper response.
+    """
 
 
 class JobScheduler:
@@ -56,10 +66,11 @@ class JobScheduler:
                 return
             self._stop_requested.clear()
             self._ready.clear()
-            recover_interrupted_jobs()
-            from backend.scrubber import run_scrubber
-
-            run_scrubber()
+            # NOTE: recovery and scrubbing intentionally run inside the
+            # scheduler thread's maintenance loop, NOT here. start() is called
+            # synchronously from async API endpoints (enqueue), and the heavy
+            # DB/filesystem work used to block the uvicorn event loop for
+            # seconds on cold start.
             self._thread = threading.Thread(
                 target=self._thread_main,
                 name="novelbridge-job-scheduler",
@@ -90,6 +101,13 @@ class JobScheduler:
             self._ready.clear()
 
     async def _serve(self) -> None:
+        try:
+            # Requeue jobs interrupted by the previous process before workers
+            # can claim anything. Runs here (scheduler thread) so start() never
+            # blocks the API's event loop.
+            await asyncio.to_thread(recover_interrupted_jobs)
+        except Exception:
+            logger.exception("Startup job recovery failed")
         self._ready.set()
         workers = [
             asyncio.create_task(self._worker_loop(index), name=f"job-worker-{index}")
@@ -196,6 +214,19 @@ class JobScheduler:
                     current_message="Completed",
                 )
         except asyncio.CancelledError:
+            if self._stop_requested.is_set():
+                # Scheduler/process shutdown, NOT a user cancel: requeue the
+                # job so the next start recovers it (crash-recovery path),
+                # preserving completed chapter work, and let the worker task
+                # observe the real cancellation.
+                try:
+                    requeue_job(job.id, "Requeued after scheduler shutdown")
+                    logger.info("Job %s requeued during scheduler shutdown", job.id)
+                except Exception:
+                    logger.exception("Failed to requeue job %s on shutdown", job.id)
+                raise
+            # User cancel (via JobControl.check) — the job row is already
+            # terminal; swallow so this worker keeps serving other jobs.
             cancel_job(job.id)
             logger.info("Job %s was cancelled", job.id)
         except Exception as exc:
@@ -294,7 +325,7 @@ class JobScheduler:
             if current.status == JobStatus.completed:
                 return current
             if current.status == JobStatus.cancelled:
-                raise asyncio.CancelledError(f"Job {job.id} was cancelled")
+                raise JobCancelledError(f"Job {job.id} was cancelled")
             if current.status == JobStatus.failed:
                 raise RuntimeError(current.error_message or f"Job {job.id} failed")
             await asyncio.sleep(self.poll_interval)
@@ -326,7 +357,7 @@ class JobScheduler:
             if current.status == JobStatus.completed:
                 return current
             if current.status == JobStatus.cancelled:
-                raise asyncio.CancelledError(f"Job {job_id} was cancelled")
+                raise JobCancelledError(f"Job {job_id} was cancelled")
             if current.status == JobStatus.failed:
                 raise RuntimeError(current.error_message or f"Job {job_id} failed")
             await asyncio.sleep(self.poll_interval)

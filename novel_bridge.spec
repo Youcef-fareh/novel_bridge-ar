@@ -8,7 +8,39 @@
 # Output lands in:  dist/NovelBridgeAR/NovelBridgeAR.exe
 # ─────────────────────────────────────────────────────────────────────────────
 
-from PyInstaller.utils.hooks import collect_data_files
+import sys
+from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+LNCRAWL_CHECKOUT = PROJECT_ROOT / "lightnovel-crawler-dev"
+LNCRAWL_SOURCES = PROJECT_ROOT / "other sources" / "lightnovel-crawler-sources"
+
+for required_path in (
+    LNCRAWL_CHECKOUT / "lncrawl",
+    LNCRAWL_CHECKOUT / "LICENSE",
+    LNCRAWL_SOURCES / "en",
+    LNCRAWL_SOURCES / "ar",
+    LNCRAWL_SOURCES / "LICENSE",
+):
+    if not required_path.exists():
+        raise FileNotFoundError(
+            f"Required LightNovelCrawler packaging input is missing: {required_path}"
+        )
+
+sys.path.insert(0, str(LNCRAWL_CHECKOUT))
+
+
+def collect_runtime_tree(source_root: Path, destination_root: str) -> list[tuple[str, str]]:
+    return [
+        (
+            str(path),
+            str(Path(destination_root) / path.relative_to(source_root)),
+        )
+        for path in source_root.rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+    ]
 
 # ── Collect data files that packages ship as non-Python assets ──────────────
 datas = []
@@ -25,6 +57,33 @@ datas += [("icon.ico", ".")]
 # Public site / glossary config files — OAuth client secrets stay external.
 datas += [("config/sites.json", "config")]
 datas += [("config/glossary.json", "config")]
+
+# Keep the crawler checkout and source catalog alongside the executable so the
+# runtime bridge can discover them using its normal folder-layout detection.
+datas += collect_runtime_tree(
+    LNCRAWL_CHECKOUT / "lncrawl",
+    "lightnovel-crawler-dev/lncrawl",
+)
+datas += [
+    (
+        str(LNCRAWL_CHECKOUT / "LICENSE"),
+        "lightnovel-crawler-dev",
+    ),
+    (
+        str(LNCRAWL_CHECKOUT / "README.md"),
+        "lightnovel-crawler-dev",
+    ),
+]
+datas += collect_runtime_tree(
+    LNCRAWL_SOURCES,
+    "other sources/lightnovel-crawler-sources",
+)
+datas += [
+    (
+        str(LNCRAWL_SOURCES / "LICENSE"),
+        "licenses/lightnovel-crawler-sources",
+    ),
+]
 
 # Playwright needs its Node driver and JavaScript files at runtime. Browser
 # binaries are distributed separately and must not be folded into this bundle.
@@ -75,13 +134,22 @@ hidden_imports = [
     "google.genai",
     "groq",
     "openai",
+    # Dependencies referenced by dynamically loaded external source modules.
+    "Crypto.Cipher.AES",
+    "box",
+    "exejs",
+    "pyease_grpc",
+    "regex",
+    "requests.utils",
 ]
+hidden_imports += collect_submodules("lncrawl")
+hidden_imports += collect_submodules("scraper")
 
 block_cipher = None
 
 a = Analysis(
     ["run_gui.py"],          # entry point
-    pathex=["."],
+    pathex=[str(PROJECT_ROOT), str(LNCRAWL_CHECKOUT)],
     binaries=[],
     datas=datas,
     hiddenimports=hidden_imports,

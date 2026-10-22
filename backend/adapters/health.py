@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 class SourceHealth:

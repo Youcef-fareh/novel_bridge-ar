@@ -67,10 +67,14 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 
 1. In **Library**, click **Add Novel** and either paste a supported novel URL or choose **Import EPUB** and select an EPUB file.
 2. Find novels in the bookshelf using search, status filters, or sorting. Select a novel to open its chapter workspace; use **Back to library** to return to the collection.
-3. For a website novel, start scraping and wait for its chapters to appear. Scraping also loads the novel's cover into the Library when the site provides one. Imported EPUB chapters are added to the library ready to translate.
-4. Select the chapters to translate.
-5. Choose a provider and model, then start translation.
-6. Watch each chapter's status. Retry failed chapters before building the book.
+3. Click **Search Sources** to search a title independently of the saved library. Choose a scraper or search all enabled search-capable adapters, then add a result to the library. Results arrive source by source while the progress bar shows checked sources, the active scraper, and failures. Matching titles are grouped with a language tag and a separate add action for each source; **Stop** keeps results already received.
+4. In **Settings**, enable or disable adapters, filter them by language/category, and set the default search filters and result limit. These preferences are saved under `data/source_preferences.json`.
+5. For a website novel, start scraping and wait for its chapters to appear. Scraping also loads the novel's cover into the Library when the site provides one. Imported EPUB chapters are added to the library ready to translate.
+6. Select the chapters to translate.
+7. Choose a provider and model, then start translation.
+8. Watch each chapter's status. Retry failed chapters before building the book.
+
+The packaged desktop app loads its interface from a local `file://` page. Qt WebEngine blocks remote requests from local pages by default, which prevented external cover URLs from loading in the bookshelf. The app now explicitly permits those remote image requests; sources that omit covers or block hotlinking can still show the title placeholder. The API cover route fetches and validates the image server-side instead of returning a redirect to the remote host.
 
 EPUB import reads chapter text and reading order from the book. The original file is left unchanged; the translated EPUB is rebuilt by Novel Bridge AR, so original images and formatting are not carried over. DRM-protected or invalid EPUB files cannot be imported.
 
@@ -170,10 +174,12 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 ### 3. ترجمة رواية
 
 1. من تبويب **Library** اضغط **Add Novel**، ثم الصق رابط موقع مدعوم أو اختر **Import EPUB** وحدد ملف EPUB.
-2. للرواية من موقع، ابدأ جلب الفصول وانتظر ظهورها. يجلب التطبيق غلاف الرواية إلى المكتبة إذا كان الموقع يوفره. تُضاف فصول EPUB المستوردة إلى المكتبة لتكون جاهزة للترجمة.
-3. اختر الفصول التي تريد ترجمتها.
-4. اختر المزود والنموذج ثم ابدأ الترجمة.
-5. راقب حالة كل فصل، وأعد محاولة الفصول الفاشلة قبل إنشاء الكتاب.
+2. استخدم **Search Sources** للبحث عن عنوان رواية لدى مواقع السحب المفعّلة وإضافة النتيجة إلى المكتبة. تظهر النتائج تدريجياً مع تقدم البحث واسم الموقع الحالي وعدد المواقع التي فشلت. تُجمع الروايات المتطابقة وتُعرض اللغة ومصادرها مع خيار إضافة كل مصدر، ويحافظ **Stop** على النتائج التي وصلت.
+3. من **Settings** يمكنك تفعيل أو تعطيل مواقع السحب، والتصفية حسب اللغة أو التصنيف، وضبط خيارات البحث. تُحفظ الإعدادات في `data/source_preferences.json`.
+4. للرواية من موقع، ابدأ جلب الفصول وانتظر ظهورها. يجلب التطبيق غلاف الرواية إلى المكتبة إذا كان الموقع يوفره. تُضاف فصول EPUB المستوردة إلى المكتبة لتكون جاهزة للترجمة.
+5. اختر الفصول التي تريد ترجمتها.
+6. اختر المزود والنموذج ثم ابدأ الترجمة.
+7. راقب حالة كل فصل، وأعد محاولة الفصول الفاشلة قبل إنشاء الكتاب.
 
 يقرأ استيراد EPUB نص الفصول وترتيبها من الكتاب. لا يغيّر الملف الأصلي؛ يعيد Novel Bridge AR إنشاء ملف EPUB المترجم، لذلك لا يحتفظ بتنسيق الكتاب الأصلي أو صوره. لا يمكن استيراد ملفات EPUB المحمية بـ DRM أو التالفة.
 

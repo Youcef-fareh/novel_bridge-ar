@@ -19,6 +19,7 @@ import weakref
 import httpx
 from bs4 import BeautifulSoup
 from backend.adapters.scraper_state import DEFAULT_HEADERS
+from backend.config import resolve_path
 
 # Try importing curl_cffi; gracefully degrade if not installed
 try:
@@ -35,7 +36,7 @@ except ImportError:
 
 # Load site config once
 _SITES_CONFIG: dict = {}
-_cfg_path = Path("config/sites.json")
+_cfg_path = resolve_path("config/sites.json")
 if _cfg_path.exists():
     _SITES_CONFIG = json.loads(_cfg_path.read_text(encoding="utf-8"))
 
@@ -100,7 +101,7 @@ async def fetch_html(
                     response = await session.get(url, headers=_HEADERS, timeout=timeout)
                 status_code = response.status_code
                 body = response.text
-            if status_code == 200 and len(body) > 500:
+            if status_code == 200 and body.strip():
                 ctx.learn(success=True, status_code=status_code)
                 return body
             last_error = RuntimeError(
@@ -222,7 +223,8 @@ async def fetch_html_nodriver(
     wait_selector: str = "",
     timeout: int = 45,
     click_selector: str = "",
-) -> str:
+    return_final_url: bool = False,
+) -> str | tuple[str, str]:
     """Fetch a page using nodriver (undetected Chrome) to bypass Cloudflare.
 
     **Runs nodriver in a fully isolated subprocess** so that Chrome's window
@@ -243,6 +245,10 @@ async def fetch_html_nodriver(
         click_selector: Optional selector for accordion triggers to click
             after the page is ready. Only elements whose visible text matches
             a chapter range are clicked.
+        return_final_url: When True, return ``(html, final_url)`` where
+            ``final_url`` is the URL the browser actually ended on after
+            any redirects. Use this to detect silent redirects instead of
+            trusting the input URL.
 
     Raises:
         ImportError: if ``nodriver`` is not installed.
@@ -295,6 +301,12 @@ async def fetch_html_nodriver(
                 )
             except asyncio.TimeoutError:
                 proc.kill()
+                # Reap the killed child so it cannot linger as a zombie and
+                # its pipes are closed instead of leaking until GC teardown.
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=10)
+                except asyncio.TimeoutError:
+                    pass
                 raise RuntimeError("nodriver subprocess timed out")
 
             if _nodriver_shutdown_requested.is_set():
@@ -307,30 +319,59 @@ async def fetch_html_nodriver(
             html = Path(tmp_path).read_text(encoding="utf-8", errors="replace")
             if not html:
                 raise RuntimeError("nodriver returned empty HTML")
+            if return_final_url:
+                final_url_path = Path(tmp_path + ".final_url")
+                try:
+                    final_url = final_url_path.read_text(encoding="utf-8").strip()
+                except OSError:
+                    final_url = ""
+                return html, final_url
             return html
         finally:
             try:
                 os.unlink(tmp_path)
             except Exception:
                 pass
+            try:
+                os.unlink(tmp_path + ".final_url")
+            except Exception:
+                pass
 
 
 def parse_text(html: str, css_selectors: list[str]) -> Optional[str]:
     """
-    Try each CSS selector in order; return the first match's text content.
+    Try each CSS selector in order; return the first match's non-empty text.
+
+    <meta> tags are handled specially: their useful data is in the ``content``
+    attribute (``.text()`` is always empty for them), and a selector that
+    matched but yielded nothing must NOT short-circuit — the next selector may
+    point at real content (e.g. ``og:title`` present but empty, then ``h1``).
     """
     if _SELECTOLAX_AVAILABLE:
         tree = HTMLParser(html)
         for sel in css_selectors:
             node = tree.css_first(sel)
-            if node:
-                return node.text(strip=True)
+            if not node:
+                continue
+            value = node.text(strip=True)
+            if not value and node.tag == "meta":
+                value = (
+                    node.attributes.get("content", "")
+                    or node.attributes.get("value", "")
+                ).strip()
+            if value:
+                return value
     else:
         soup = BeautifulSoup(html, "lxml")
         for sel in css_selectors:
             node = soup.select_one(sel)
-            if node:
-                return node.get_text(strip=True)
+            if not node:
+                continue
+            value = node.get_text(strip=True)
+            if not value and node.name == "meta":
+                value = (node.get("content") or node.get("value") or "").strip()
+            if value:
+                return value
     return None
 
 
@@ -477,10 +518,17 @@ def parse_cover_url(
 
 
 def parse_links(html: str, css_selectors: list[str], base_url: str = "") -> list[tuple[str, str]]:
-    """Return list of (text, href) for all <a> tags matching any selector."""
+    """Return list of (text, href) for all <a> tags matching any selector.
+
+    Hrefs are resolved against *base_url* with urljoin so relative links
+    ("chapter-1.html", "../x/c2.html") become fetchable absolute URLs.
+    """
     results: list[tuple[str, str]] = []
-    parsed_base = urlparse(base_url)
-    scheme_host = f"{parsed_base.scheme}://{parsed_base.netloc}"
+
+    def _resolve(href: str) -> str:
+        if not base_url or href.startswith(("#", "javascript:", "mailto:")):
+            return href
+        return urljoin(base_url, href)
 
     if _SELECTOLAX_AVAILABLE:
         tree = HTMLParser(html)
@@ -489,10 +537,8 @@ def parse_links(html: str, css_selectors: list[str], base_url: str = "") -> list
             for node in nodes:
                 href = node.attributes.get("href", "")
                 text = node.text(strip=True)
-                if href:
-                    if href.startswith("/"):
-                        href = scheme_host + href
-                    results.append((text, href))
+                if href and not href.lstrip().startswith("#"):
+                    results.append((text, _resolve(href)))
         if results:
             return results
     else:
@@ -502,10 +548,8 @@ def parse_links(html: str, css_selectors: list[str], base_url: str = "") -> list
             for node in nodes:
                 href = node.get("href", "")
                 text = node.get_text(strip=True)
-                if href:
-                    if href.startswith("/"):
-                        href = scheme_host + href
-                    results.append((text, href))
+                if href and not href.lstrip().startswith("#"):
+                    results.append((text, _resolve(href)))
         if results:
             return results
     return results
@@ -518,22 +562,41 @@ def parse_chapter_body(html: str, css_selectors: list[str]) -> str:
         for sel in css_selectors:
             node = tree.css_first(sel)
             if node:
-                # Replace <br> and <p> with newlines
+                # Replace <br> nodes with a private-use marker: selectolax's
+                # text(strip=True) drops whitespace-only text nodes inserted by
+                # replace_with("\n"), which used to glue words together
+                # ("line one<br>line two" → "line oneline two").
                 for br in node.css("br"):
-                    br.replace_with("\n")
+                    marker = HTMLParser("<html><body><span>&#xe000;</span></body></html>").body.child
+                    br.replace_with(marker)
                 paragraphs = node.css("p")
                 if paragraphs:
-                    return "\n\n".join(p.text(strip=True) for p in paragraphs if p.text(strip=True))
-                return node.text(strip=True)
+                    return "\n\n".join(
+                        text
+                        for p in paragraphs
+                        if (text := p.text(strip=True).replace("\ue000", "\n").strip())
+                    )
+                return node.text(strip=True).replace("\ue000", "\n").strip()
     else:
         soup = BeautifulSoup(html, "lxml")
         for sel in css_selectors:
             node = soup.select_one(sel)
             if node:
+                # Replace <br> with newline characters; unlike the selectolax
+                # branch, bs4 keeps them inside text nodes — but each <br>
+                # must be replaced before text extraction or words glue
+                # together. Use get_text() (no per-node strip) so the
+                # newlines survive.
+                for br in node.find_all("br"):
+                    br.replace_with("\n")
                 paragraphs = node.find_all("p")
                 if paragraphs:
-                    return "\n\n".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
-                return node.get_text(separator="\n", strip=True)
+                    return "\n\n".join(
+                        text
+                        for p in paragraphs
+                        if (text := p.get_text().strip())
+                    )
+                return node.get_text().strip()
     return ""
 
 

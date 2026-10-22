@@ -7,10 +7,9 @@ import re
 import shutil
 import urllib.request
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, QRunnable, QThreadPool, QObject, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -35,6 +34,28 @@ from backend.adapters.base import AdapterRegistry, SiteAdapter
 _CUSTOM_DIR = Path(__file__).parent.parent.parent / "backend" / "adapters" / "custom"
 _BUILTIN_SITE_IDS = {"novelfire", "novelphoenix", "galaxynovels", "lightnovelpub", "ranovel", "wuxiaspot"}
 _HIDDEN_SITE_IDS = {"galaxynovels"}
+
+
+class _GithubDownloadSignals(QObject):
+    finished = pyqtSignal(str, bytes)  # target file name, raw bytes
+    failed = pyqtSignal(str)
+
+
+class _GithubDownloadWorker(QRunnable):
+    """Downloads an adapter file off the GUI thread (urlopen can take seconds)."""
+
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+        self.signals = _GithubDownloadSignals()
+
+    def run(self) -> None:
+        try:
+            with urllib.request.urlopen(self.url, timeout=20) as response:
+                content = response.read()
+            self.signals.finished.emit(Path(self.url.split("/")[-1]).name, content)
+        except Exception as exc:
+            self.signals.failed.emit(str(exc))
 
 
 def _adapter_template(site_id: str, class_name: str, domain: str, method: str, language: str) -> str:
@@ -376,15 +397,26 @@ class WebsiteSetupWidget(QWidget):
                 return
             owner, repo, branch, path = match.groups()
             url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
+        # Download off the GUI thread; urlopen (TLS handshake included) can
+        # freeze the whole window for many seconds on a slow connection.
+        worker = _GithubDownloadWorker(url)
+        worker.signals.finished.connect(self._on_github_downloaded)
+        worker.signals.failed.connect(self._on_github_download_failed)
+        self.install_result.setText("Downloading adapter from GitHub…")
+        self.install_result.setStyleSheet("color: #ecc94b; font-size: 12px;")
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_github_downloaded(self, name: str, content: bytes) -> None:
         try:
-            with urllib.request.urlopen(url, timeout=20) as response:
-                content = response.read()
             _CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
-            target = _CUSTOM_DIR / Path(url.split("/")[-1]).name
+            target = _CUSTOM_DIR / Path(name).name
             target.write_bytes(content)
             self._install_adapter(target, already_copied=True)
         except Exception as exc:
             QMessageBox.critical(self, "GitHub Import Failed", str(exc))
+
+    def _on_github_download_failed(self, message: str) -> None:
+        QMessageBox.critical(self, "GitHub Import Failed", message)
 
     def _install_adapter(self, source: Path, already_copied: bool = False) -> None:
         if source.suffix.lower() != ".py":

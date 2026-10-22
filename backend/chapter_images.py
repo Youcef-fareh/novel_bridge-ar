@@ -1,4 +1,9 @@
-"""Bounded, public-network-only chapter image downloads."""
+"""Bounded, public-network-only chapter image downloads.
+
+Each redirect target is re-resolved and checked immediately before requesting
+it. The HTTP transport is not pinned to those resolved IPs, so a DNS rebinding
+between validation and connection remains a residual limitation.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -7,6 +12,9 @@ import ipaddress
 import logging
 import os
 import socket
+import threading
+import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -17,6 +25,8 @@ from backend.database import get_chapter_images, replace_chapter_images
 from backend.models import ChapterImage
 
 logger = logging.getLogger("novelbridge.chapter_images")
+_STORE_LOCKS: dict[int, threading.Lock] = {}
+_STORE_LOCKS_GUARD = threading.Lock()
 
 MAX_IMAGES_PER_CHAPTER = 8
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
@@ -82,6 +92,23 @@ async def _download_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, s
     raise ValueError("Chapter image redirect handling failed.")
 
 
+@asynccontextmanager
+async def _chapter_store_guard(chapter_id: int):
+    with _STORE_LOCKS_GUARD:
+        lock = _STORE_LOCKS.setdefault(chapter_id, threading.Lock())
+    acquire_task = asyncio.create_task(asyncio.to_thread(lock.acquire))
+    try:
+        await asyncio.shield(acquire_task)
+    except asyncio.CancelledError:
+        await acquire_task
+        lock.release()
+        raise
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 async def store_chapter_images(
     novel_id: int,
     chapter_id: int,
@@ -91,12 +118,13 @@ async def store_chapter_images(
     bounded = images[:MAX_IMAGES_PER_CHAPTER]
     root = (get_config().paths.data_dir / "chapter-images").resolve()
     if not bounded:
-        previous = get_chapter_images(chapter_id)
-        replace_chapter_images(chapter_id, [])
-        for stored in previous:
-            old_path = Path(stored.file_path)
-            if old_path.resolve().is_relative_to(root):
-                old_path.unlink(missing_ok=True)
+        async with _chapter_store_guard(chapter_id):
+            previous = get_chapter_images(chapter_id)
+            replace_chapter_images(chapter_id, [])
+            for stored in previous:
+                old_path = Path(stored.file_path)
+                if old_path.resolve().is_relative_to(root):
+                    old_path.unlink(missing_ok=True)
         return []
 
     records: list[dict] = []
@@ -106,6 +134,11 @@ async def store_chapter_images(
         for image in bounded:
             try:
                 data, media_type = await _download_image(client, image["url"])
+                digest = hashlib.sha256(data).hexdigest()
+                if digest in seen_digests:
+                    # Dedup BEFORE the budget check: a repeated image costs
+                    # nothing new and must not eat into the chapter budget.
+                    continue
                 if total_bytes + len(data) > 12 * 1024 * 1024:
                     logger.warning(
                         "Skipping chapter image because chapter %s exceeds its 12 MiB image budget",
@@ -113,18 +146,20 @@ async def store_chapter_images(
                     )
                     break
                 total_bytes += len(data)
-                digest = hashlib.sha256(data).hexdigest()
-                if digest in seen_digests:
-                    continue
                 seen_digests.add(digest)
                 extension = _IMAGE_TYPES[media_type][0]
                 destination = root / str(novel_id) / str(chapter_id) / f"{digest}{extension}"
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 if not destination.resolve().is_relative_to(root):
                     raise ValueError("Chapter image path escapes the image store.")
-                temporary = destination.with_suffix(destination.suffix + ".tmp")
-                temporary.write_bytes(data)
-                os.replace(temporary, destination)
+                temporary = destination.with_name(
+                    f".{destination.name}.{uuid.uuid4().hex}.tmp"
+                )
+                try:
+                    temporary.write_bytes(data)
+                    os.replace(temporary, destination)
+                finally:
+                    temporary.unlink(missing_ok=True)
                 records.append({
                     "image_id": digest[:24],
                     "file_path": str(destination),
@@ -140,17 +175,18 @@ async def store_chapter_images(
                     exc,
                 )
 
-    previous = get_chapter_images(chapter_id)
-    if not records and previous:
-        logger.warning(
-            "Keeping %d previously stored chapter images after all current image downloads failed",
-            len(previous),
-        )
-        return previous
-    stored = replace_chapter_images(chapter_id, records)
-    retained = {record["file_path"] for record in records}
-    for old_image in previous:
-        old_path = Path(old_image.file_path)
-        if str(old_path) not in retained and old_path.resolve().is_relative_to(root):
-            old_path.unlink(missing_ok=True)
-    return stored
+    async with _chapter_store_guard(chapter_id):
+        previous = get_chapter_images(chapter_id)
+        if not records and previous:
+            logger.warning(
+                "Keeping %d previously stored chapter images after all current image downloads failed",
+                len(previous),
+            )
+            return previous
+        stored = replace_chapter_images(chapter_id, records)
+        retained = {record["file_path"] for record in records}
+        for old_image in previous:
+            old_path = Path(old_image.file_path)
+            if str(old_path) not in retained and old_path.resolve().is_relative_to(root):
+                old_path.unlink(missing_ok=True)
+        return stored

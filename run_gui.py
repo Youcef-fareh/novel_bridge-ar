@@ -2,6 +2,8 @@
 NovelBridge — Entry point.
 Run: python run_gui.py
 """
+import logging
+import os
 import sys
 from pathlib import Path
 
@@ -23,11 +25,29 @@ def ensure_environment_file() -> Path:
     env_file = app_dir / ".env"
     template = app_dir / ".env.example"
     if not env_file.exists() and template.exists():
-        env_file.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+        try:
+            env_file.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+        except PermissionError:
+            user_dir = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming"))
+            env_file = user_dir / "NovelBridge" / ".env"
+            env_file.parent.mkdir(parents=True, exist_ok=True)
+            if not env_file.exists():
+                env_file.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+            logging.getLogger("novelbridge.startup").warning(
+                "Application directory is not writable; using per-user environment file %s",
+                env_file,
+            )
     return env_file
 
 
+
+
+
 load_dotenv(dotenv_path=ensure_environment_file())
+
+from backend.logging_setup import setup_logging
+
+setup_logging()
 
 from gui.app import run_app
 

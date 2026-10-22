@@ -42,6 +42,15 @@ def _safe_title(title: str, novel_id: Optional[int] = None) -> str:
     return safe_title
 
 
+def _effective_volume(chapter: Chapter) -> int:
+    """Volume a chapter belongs to; volume_serial 0 is a real volume."""
+    return (
+        chapter.volume_serial
+        if chapter.volume_serial is not None
+        else chapter.index // 100 + 1
+    )
+
+
 def _select_chapters(
     chapters: Sequence[Chapter],
     volume: Optional[int],
@@ -49,7 +58,7 @@ def _select_chapters(
 ) -> list[Chapter]:
     selected = [
         chapter for chapter in chapters
-        if volume is None or (chapter.volume_serial or chapter.index // 100 + 1) == volume
+        if volume is None or _effective_volume(chapter) == volume
     ]
     selected = [
         chapter for chapter in selected
@@ -130,7 +139,7 @@ def make_artifact(
                 for chapter in selected:
                     text = _chapter_text(chapter, native_arabic)
                     serial = chapter.index + 1
-                    volume_serial = chapter.volume_serial or chapter.index // 100 + 1
+                    volume_serial = _effective_volume(chapter)
                     archive.writestr(
                         f"chapters/vol_{volume_serial:03d}/chapter_{serial:05d}.txt",
                         f"{chapter.title}\n\n{text}",
@@ -147,7 +156,7 @@ def make_artifact(
                             {
                                 "index": chapter.index,
                                 "title": chapter.title,
-                                "volume": chapter.volume_serial or chapter.index // 100 + 1,
+                                "volume": _effective_volume(chapter),
                                 "text": _chapter_text(chapter, native_arabic),
                             }
                             for chapter in selected
@@ -159,7 +168,12 @@ def make_artifact(
         return output_path
 
     epub_path = build_epub(
-        novel, selected, output_dir, volume=volume, language=language
+        novel,
+        selected,
+        output_dir,
+        volume=volume,
+        language=language,
+        chapter_images=chapter_images,
     )
     output_path = output_dir / f"{stem}{volume_suffix}{lang_suffix}.{fmt}"
     api_failure: Optional[Exception] = None

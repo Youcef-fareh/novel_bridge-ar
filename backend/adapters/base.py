@@ -4,18 +4,21 @@ NovelBridge — Site Adapter base class and data containers.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
 import logging
-from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlparse
+
+from backend.adapters.preferences import get_preferences
 
 logger = logging.getLogger("novelbridge.adapters")
 
 
 def _rejection_reason(url: str) -> Optional[str]:
-    path = Path("config/_rejected.json")
+    from backend.config import resolve_path
+
+    path = resolve_path("config/_rejected.json")
     if not path.exists():
         return None
     try:
@@ -30,6 +33,15 @@ def _rejection_reason(url: str) -> Optional[str]:
         if (urlparse(rejected_url).hostname or "").lower() == host:
             return str(reason)
     return None
+
+
+def host_matches(url: str, domains: tuple[str, ...]) -> bool:
+    """Match an HTTP(S) URL against exact domains and their subdomains."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower().rstrip(".")
+    return any(host == domain or host.endswith(f".{domain}") for domain in domains)
 
 
 @dataclass
@@ -74,7 +86,8 @@ class SiteAdapter(ABC):
     is_native_arabic: bool = False
 
     # Optional registry metadata for custom adapters.
-    source_language: str = "Unknown"
+    source_language: str = "English"
+    category: str = ""
     scraping_method: str = "Unknown"
     can_search: bool = False
 
@@ -117,8 +130,9 @@ class AdapterRegistry:
 
     @classmethod
     def find(cls, url: str) -> Optional[SiteAdapter]:
+        enabled_adapters = get_preferences()["enabled_adapters"]
         for adapter in cls._adapters.values():
-            if adapter.can_handle(url):
+            if enabled_adapters.get(adapter.site_id, True) is not False and adapter.can_handle(url):
                 reason = _rejection_reason(url)
                 if reason:
                     logger.warning(
@@ -131,11 +145,18 @@ class AdapterRegistry:
 
     @classmethod
     def list_all(cls) -> List[dict]:
+        preferences = get_preferences()
         return [
             {
                 "site_id": sid,
                 "class": type(adapter).__name__,
                 "source_language": getattr(adapter, "source_language", "Unknown"),
+                "category": getattr(
+                    adapter,
+                    "category",
+                    "",
+                ) or ("arabic" if getattr(adapter, "is_native_arabic", False) else "webnovel"),
+                "enabled": preferences["enabled_adapters"].get(sid, True) is not False,
                 "is_native_arabic": bool(
                     getattr(adapter, "is_native_arabic", False)
                 ),

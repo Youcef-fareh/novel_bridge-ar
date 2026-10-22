@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Dict, List
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -178,7 +177,7 @@ def _write_env_file(updates: Dict[str, str], remove_keys: set[str] | None = None
                     continue
             lines.append(line)
 
-    # Append any keys that weren't in the file at all
+    # Append any keys that weren't in the file at all.
     for key, val in updates.items():
         if key not in handled:
             lines.append(f"{key}={val}")
@@ -1153,7 +1152,11 @@ class ProviderSettingsWidget(QWidget):
         if ok and model.strip():
             models = self._models[prefix]
             new_model = model.strip()
-            models[models.index(old_model)] = new_model
+            try:
+                model_index = models.index(old_model)
+            except ValueError:
+                return
+            models[model_index] = new_model
             default_key = f"{prefix}_MODEL"
             if self._env.get(default_key) == old_model:
                 self._env[default_key] = new_model

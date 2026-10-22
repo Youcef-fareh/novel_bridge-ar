@@ -33,6 +33,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout LightNovelCrawler runtime
+        uses: actions/checkout@v4
+        with:
+          repository: lncrawl/lightnovel-crawler
+          ref: v4.14.0
+          path: lightnovel-crawler-dev
+          persist-credentials: false
+
       - name: Resolve release version
         shell: pwsh
         env:
@@ -65,6 +73,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip wheel setuptools pyinstaller
           python -m pip install -r requirements.txt
+          python -m pip install -r requirements-lncrawl.txt
 
       # Keep Chromium outside the PyInstaller tree. The headless shell is enough
       # for the app's Chromium launch(headless=True) scraping paths.
@@ -106,6 +115,27 @@ jobs:
           }
           Write-Host "✅ NovelBridgeAR.exe found"
           Get-Item "dist\NovelBridgeAR\NovelBridgeAR.exe" | Select-Object Name, Length
+          $dataRoots = @("dist\NovelBridgeAR\_internal", "dist\NovelBridgeAR")
+          $dataRoot = $dataRoots |
+            Where-Object {
+              Test-Path -LiteralPath (Join-Path $_ "lightnovel-crawler-dev\lncrawl\__init__.py")
+            } |
+            Select-Object -First 1
+          if (!$dataRoot) {
+            throw "LightNovelCrawler runtime is missing from the application bundle"
+          }
+          $requiredCrawlerFiles = @(
+            "lightnovel-crawler-dev\LICENSE",
+            "other sources\lightnovel-crawler-sources\LICENSE",
+            "other sources\lightnovel-crawler-sources\en",
+            "other sources\lightnovel-crawler-sources\ar"
+          ) | ForEach-Object { Join-Path $dataRoot $_ }
+          foreach ($path in $requiredCrawlerFiles) {
+            if (!(Test-Path -LiteralPath $path)) {
+              throw "LightNovelCrawler payload is missing from the application bundle: $path"
+            }
+          }
+          Write-Host "✅ LightNovelCrawler runtime, English/Arabic sources, and licenses found"
         shell: pwsh
 
       - name: Download previous portable release for delta build

@@ -8,13 +8,18 @@ from collections.abc import Iterable
 from backend.models import Chapter
 
 _CANDIDATE_RE = re.compile(
+    # [^\S\n]+ (whitespace but NOT newline) in the chain: a plain \s+ would
+    # join words across a paragraph boundary into one bogus candidate.
     r"\b[A-Z][a-z]+(?:['’][A-Z]?[a-z]+)?"
-    r"(?:\s+(?:of|the|and|de|van|[A-Z][a-z]+(?:['’][A-Z]?[a-z]+)?)){0,3}\b"
+    r"(?:[^\S\n]+(?:of|the|and|de|van|[A-Z][a-z]+(?:['’][A-Z]?[a-z]+)?)){0,3}\b"
 )
 _IGNORED_SINGLE_WORDS = {
-    "After", "Before", "Chapter", "Finally", "However", "Meanwhile",
-    "Perhaps", "Suddenly", "Then", "There", "This", "When", "Where",
-    "While", "Yes",
+    # Sentence starters and common function words that are never glossary
+    # material, even when they appear repeatedly.
+    "After", "All", "Also", "And", "Before", "But", "Chapter", "Finally",
+    "He", "Her", "His", "However", "If", "It", "Meanwhile", "Not", "Now",
+    "One", "Perhaps", "She", "So", "Suddenly", "That", "The", "Then",
+    "There", "They", "This", "When", "Where", "While", "Yes",
 }
 
 

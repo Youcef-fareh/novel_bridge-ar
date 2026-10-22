@@ -7,12 +7,12 @@ from typing import Optional
 import asyncio
 import logging
 import os
-from typing import List, Optional
+from typing import List
 
 from dotenv import load_dotenv
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -24,6 +24,8 @@ from backend.translation.base import (
     TranslationProvider,
     apply_glossary_postpass,
     build_system_prompt,
+    is_retryable_error,
+    is_streaming_unsupported_error,
 )
 
 logger = logging.getLogger("novelbridge.translation.tokenrouter")
@@ -92,7 +94,7 @@ class TokenRouterProvider(TranslationProvider):
         return apply_glossary_postpass(result, glossary)
 
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(is_retryable_error),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -140,13 +142,16 @@ class TokenRouterProvider(TranslationProvider):
                             content_parts.append(delta.content)
                 translated = "".join(content_parts).strip()
             except Exception as stream_err:
-                logger.warning(f"TokenRouter stream completion failed, trying non-streaming: {stream_err}")
+                if not is_streaming_unsupported_error(stream_err):
+                    raise
+                logger.warning(f"TokenRouter stream completion unsupported, trying non-streaming: {stream_err}")
                 response = client.chat.completions.create(
                     model=model,
                     messages=messages,
                     stream=False,
                 )
-                translated = response.choices[0].message.content.strip() if response.choices else ""
+                # content can be None (reasoning-only output, filtered reply).
+                translated = (response.choices[0].message.content or "").strip() if response.choices else ""
 
         except ImportError:
             # Fallback to direct httpx request if openai is not yet imported

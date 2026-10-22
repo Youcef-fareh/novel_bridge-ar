@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import os
+import sys
 import json
 import tempfile
-from dataclasses import asdict, dataclass
+from functools import lru_cache
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Mapping
 
@@ -19,6 +21,35 @@ _SECRET_NAMES = (
     "XAI_API_KEY",
     "GROK_API_KEY",
 )
+_CONFIG_ENV_NAMES = (
+    "CONFIG_PATH",
+    "MAX_CONCURRENT_JOBS", "MAX_CONCURRENT_PER_DOMAIN", "MAX_SESSIONS_PER_ORIGIN",
+    "MAX_ATTEMPTS", "REQUEST_TIMEOUT", "MIN_CHAPTER_CHARS",
+    "TRANSLATOR_REQUEST_TIMEOUT", "TRANSLATOR_ENABLED", "CALIBRE_COMMAND",
+    "CALIBRE_API_ENABLED", "CALIBRE_API_URL", "CALIBRE_API_FALLBACK_TO_LOCAL",
+    "DB_PATH", "OUTPUT_DIR", "DATA_DIR", "OUTPUT_MAX_MB", "API_PORT",
+    "DIAGNOSTICS_ALLOW_EXPORT", "LOG_LEVEL",
+)
+
+
+def base_dir() -> Path:
+    """Directory the application reads its bundled/config files from."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def resolve_path(path: Path | str) -> Path:
+    """Resolve a possibly-relative path against the application base dir."""
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (base_dir() / candidate).resolve()
+
+
+def _config_file_path(environ: Mapping[str, str] | None = None) -> Path:
+    config_path = (environ or {}).get("CONFIG_PATH", os.getenv("CONFIG_PATH", "data/config.json"))
+    return resolve_path(config_path)
 
 
 def _at_least(name: str, value: int | float, minimum: int | float) -> None:
@@ -27,7 +58,7 @@ def _at_least(name: str, value: int | float, minimum: int | float) -> None:
 
 
 def _settings(environ: Mapping[str, str] | None = None) -> dict[str, str]:
-    config_path = Path(os.getenv("CONFIG_PATH", "data/config.json"))
+    config_path = _config_file_path(environ)
     values: dict[str, str] = {}
     if config_path.exists():
         stored = json.loads(config_path.read_text(encoding="utf-8"))
@@ -48,6 +79,8 @@ def _settings(environ: Mapping[str, str] | None = None) -> dict[str, str]:
             ("paths", "db"): "DB_PATH",
             ("paths", "output"): "OUTPUT_DIR",
             ("paths", "data_dir"): "DATA_DIR",
+            ("diagnostics", "allow_export"): "DIAGNOSTICS_ALLOW_EXPORT",
+            ("diagnostics", "log_level"): "LOG_LEVEL",
         }
         for (section, key), env_name in fields.items():
             section_values = stored.get(section, {})
@@ -58,7 +91,7 @@ def _settings(environ: Mapping[str, str] | None = None) -> dict[str, str]:
                 values[env_name] = str(stored[key])
     values.update({
         key: value
-        for key, value in dotenv_values().items()
+        for key, value in dotenv_values(resolve_path(".env")).items()
         if value is not None
     })
     values.update(os.environ)
@@ -98,11 +131,18 @@ class PathsConfig:
 
 
 @dataclass(frozen=True)
+class DiagnosticsConfig:
+    allow_export: bool
+    log_level: str
+
+
+@dataclass(frozen=True)
 class Config:
     crawler: CrawlerConfig
     translator: TranslatorConfig
     calibre: CalibreConfig
     paths: PathsConfig
+    diagnostics: DiagnosticsConfig
     output_max_mb: int
     api_port: int
 
@@ -154,15 +194,22 @@ class Config:
             api_fallback_to_local=boolean("CALIBRE_API_FALLBACK_TO_LOCAL", True),
         )
         paths = PathsConfig(
-            db=Path(values.get("DB_PATH", "data/novelbridge.db")),
-            output=Path(values.get("OUTPUT_DIR", "output")),
-            data_dir=Path(values.get("DATA_DIR", "data")),
+            db=resolve_path(values.get("DB_PATH", "data/novelbridge.db")),
+            output=resolve_path(values.get("OUTPUT_DIR", "output")),
+            data_dir=resolve_path(values.get("DATA_DIR", "data")),
         )
+        log_level = values.get("LOG_LEVEL", "INFO").upper()
+        if log_level not in {"DEBUG", "INFO", "WARNING"}:
+            raise ValueError("LOG_LEVEL must be DEBUG, INFO, or WARNING")
         config = cls(
             crawler=crawler,
             translator=translator,
             calibre=calibre,
             paths=paths,
+            diagnostics=DiagnosticsConfig(
+                allow_export=boolean("DIAGNOSTICS_ALLOW_EXPORT", True),
+                log_level=log_level,
+            ),
             output_max_mb=integer("OUTPUT_MAX_MB", 2048),
             api_port=integer("API_PORT", 8000),
         )
@@ -192,7 +239,7 @@ class Config:
         return result
 
     def save(self, path: Path | None = None) -> None:
-        destination = path or Path(os.getenv("CONFIG_PATH", "data/config.json"))
+        destination = resolve_path(path) if path else _config_file_path()
         destination.parent.mkdir(parents=True, exist_ok=True)
         data = asdict(self)
         for key, value in data["paths"].items():
@@ -219,5 +266,70 @@ class Config:
             raise
 
 
+@lru_cache(maxsize=16)
+def _cached_config(
+    config_path: str,
+    config_mtime_ns: int | None,
+    dotenv_mtime_ns: int | None,
+    environment: tuple[tuple[str, str], ...],
+) -> Config:
+    del config_path, config_mtime_ns, dotenv_mtime_ns, environment
+    return Config.from_env()
+
+
 def get_config(environ: Mapping[str, str] | None = None) -> Config:
-    return Config.from_env(environ)
+    config_path = _config_file_path(environ)
+    dotenv_path = resolve_path(".env")
+
+    def mtime(path: Path) -> int | None:
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return None
+
+    environment = dict(os.environ)
+    if environ is not None:
+        environment.update(environ)
+    relevant_environment = tuple(
+        sorted((key, environment[key]) for key in _CONFIG_ENV_NAMES if key in environment)
+    )
+    if environ is not None:
+        # Preserve explicit mappings without mutating process-global state.
+        return Config.from_env(environ)
+    return _cached_config(
+        str(config_path),
+        mtime(config_path),
+        mtime(dotenv_path),
+        relevant_environment,
+    )
+
+
+def update_diagnostics_settings(allow_export: bool, log_level: str) -> Config:
+    """Persist developer logging preferences and apply them to this process."""
+    normalized_level = log_level.upper()
+    if normalized_level not in {"DEBUG", "INFO", "WARNING"}:
+        raise ValueError("LOG_LEVEL must be DEBUG, INFO, or WARNING")
+    current = get_config()
+    updated = replace(
+        current,
+        diagnostics=DiagnosticsConfig(
+            allow_export=allow_export,
+            log_level=normalized_level,
+        ),
+    )
+    updated.save()
+    os.environ["DIAGNOSTICS_ALLOW_EXPORT"] = str(allow_export).lower()
+    os.environ["LOG_LEVEL"] = normalized_level
+    _cached_config.cache_clear()
+    return updated
+
+
+def output_path() -> Path:
+    """Single source of truth for the artifact output directory.
+
+    Reads the live config (explicit OUTPUT_DIR env > config.json) on every
+    call, so pipeline writers, artifact-download validation and the scrubber
+    can never disagree about where artifacts live, and runtime changes to
+    config.json are picked up immediately.
+    """
+    return resolve_path(get_config().paths.output)

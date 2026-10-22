@@ -99,7 +99,10 @@ class EasternWordsmithAdapter(SiteAdapter):
         )
 
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
-        html = await _fetch_easternwordsmith_html(novel_url, "h4.center, title")
+        # Wait only for h4.center: including "title" in the selector would
+        # satisfy the wait immediately (every document has a <title>), so the
+        # Cloudflare challenge page was captured before h4.center rendered.
+        html = await _fetch_easternwordsmith_html(novel_url, "h4.center")
         soup = BeautifulSoup(html, "html.parser")
         title = soup.title.get_text(" ", strip=True) if soup.title else ""
         if "just a moment" in title.casefold() or "performing security verification" in html.casefold():

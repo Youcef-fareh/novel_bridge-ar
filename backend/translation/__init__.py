@@ -17,8 +17,6 @@ from backend.translation.orcarouter_provider import (
     OrcaRouterProvider,
 )
 from backend.translation.tokenrouter_provider import (
-    DEFAULT_BASE_URL,
-    DEFAULT_MODEL,
     TOKENROUTER_MODELS,
     TokenRouterProvider,
 )

@@ -17,17 +17,10 @@ import json
 import logging
 import re
 import threading
-from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
-
-try:
-    from selectolax.parser import HTMLParser
-    _SELECTOLAX_AVAILABLE = True
-except ImportError:
-    _SELECTOLAX_AVAILABLE = False
 
 from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
 from backend.adapters.fetcher import (
@@ -39,6 +32,7 @@ from backend.adapters.fetcher import (
     parse_text,
 )
 from backend.adapters.health import health
+from backend.config import resolve_path
 
 logger = logging.getLogger("novelbridge.soup_template")
 
@@ -75,12 +69,36 @@ _CHALLENGE_MARKERS = (
     "ddos-guard",
     "please wait",
 )
+# Infrastructure identifiers that only ever appear on a real challenge page
+# (never in prose or a legit head). Everything else needs >= 2 hits.
+_STRONG_CHALLENGE_MARKERS = (
+    "cf-challenge",
+    "ddos-guard",
+)
 _ADBLOCK_MARKERS = (
     "disable your ad blocker",
     "disable adblock",
     "please turn off your adblocker",
 )
 _MIN_CHAPTER_CHARS = int(__import__("os").getenv("MIN_CHAPTER_CHARS", "50"))
+
+# Noise excluded from the challenge scan: script/style/noscript/iframe blocks
+# and HTML comments. Legit heads routinely mention "captcha", "please wait" or
+# "enable javascript" inside script src URLs and <noscript> hints, which used
+# to flag real content as a challenge page. The trailing alternatives handle
+# blocks cut off by the slice boundary (unterminated body / opening tag).
+_BLOCK_NOISE_RE = re.compile(
+    r"<!--.*?-->"
+    r"|<(script|style|noscript|iframe)\b[^>]*>.*?</\1\s*>"
+    r"|<(script|style|noscript|iframe)\b[^>]*>.*\Z"
+    r"|<(script|style|noscript|iframe)\b[^>]*\Z",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _challenge_scan_text(html: str) -> str:
+    """Return the noise-free, lowercased head slice used for marker matching."""
+    return _BLOCK_NOISE_RE.sub(" ", html[:3000]).lower()
 
 
 def _strip_bad_html(html: str) -> str:
@@ -90,17 +108,14 @@ def _strip_bad_html(html: str) -> str:
         for tag in soup.find_all(tag_name):
             tag.decompose()
     for selector in BAD_CSS:
-        try:
-            for tag in soup.select(selector):
-                tag.decompose()
-        except Exception:
-            pass
+        for tag in soup.select(selector):
+            tag.decompose()
     return str(soup)
 
 
 def _load_site_selectors(site_id: str) -> dict:
     """Load selector overrides from config/sites.json for *site_id*."""
-    cfg = Path("config/sites.json")
+    cfg = resolve_path("config/sites.json")
     if cfg.exists():
         try:
             return (
@@ -108,8 +123,8 @@ def _load_site_selectors(site_id: str) -> dict:
                 .get(site_id, {})
                 .get("selectors", {})
             )
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Could not load selector overrides from %s: %s", cfg, exc)
     return {}
 
 
@@ -217,13 +232,19 @@ class SoupAdapter(SiteAdapter):
 
         Returns a reason string if the page is not real content, or None if OK.
         Default implementation detects common Cloudflare/DDoS-Guard patterns.
+
+        A single generic marker is not enough: legit pages say "please wait"
+        or "enable javascript" in prose and hints. Infrastructure identifiers
+        (cf-challenge / ddos-guard) and two or more markers confirm a wall.
         """
         if not html:
             return "empty_body"
-        lower = html[:3000].lower()
-        for marker in _CHALLENGE_MARKERS:
-            if marker in lower:
-                return "challenge"
+        lower = _challenge_scan_text(html)
+        if any(marker in lower for marker in _STRONG_CHALLENGE_MARKERS):
+            return "challenge"
+        marker_hits = sum(1 for marker in _CHALLENGE_MARKERS if marker in lower)
+        if marker_hits >= 2:
+            return "challenge"
         for marker in _ADBLOCK_MARKERS:
             if marker in lower:
                 return "adblock_wall"
@@ -270,15 +291,20 @@ class SoupAdapter(SiteAdapter):
         origin = urlparse(novel_url).netloc
         all_refs: list[ChapterRef] = []
         seen_urls: set[str] = set()
+        visited_pages: set[str] = {novel_url}
         page = 1
+        next_page_url: Optional[str] = None
 
         while True:
             if page == 1:
                 url = novel_url
+            elif next_page_url is not None:
+                url = next_page_url
             else:
                 url = self.build_chapter_list_url(novel_url, page)
-                if url is None:
+                if url is None or url in visited_pages:
                     break
+                visited_pages.add(url)
 
             try:
                 html = await fetch_html(url, self.site_id)
@@ -301,17 +327,25 @@ class SoupAdapter(SiteAdapter):
                 r.index = len(all_refs)
                 all_refs.append(r)
 
-            # Follow next-page link if present and no fixed URL scheme
-            if self.pagination_next_selectors and page > 1:
-                next_url = self._find_next_page(html, url)
-                if not next_url or next_url in seen_urls:
-                    break
-                page += 1
-                continue
+            # Follow the next-page link when the site exposes one. This must be
+            # checked on every page (including page 1), otherwise next-link
+            # pagination can never start.
+            next_page_url = None
+            if self.pagination_next_selectors:
+                candidate = self._find_next_page(html, url)
+                if candidate and candidate not in visited_pages:
+                    next_page_url = candidate
 
+            if next_page_url is None:
+                # No next link: fall back to an explicit numbered URL scheme.
+                candidate = self.build_chapter_list_url(novel_url, page + 1)
+                if candidate is not None and candidate not in visited_pages:
+                    next_page_url = candidate
+
+            if next_page_url is None:
+                break
+            visited_pages.add(next_page_url)
             page += 1
-            if not self.pagination_next_selectors and page > 1:
-                break   # single-page sites: stop after first page
 
         return all_refs
 
@@ -331,11 +365,16 @@ class SoupAdapter(SiteAdapter):
         if reason:
             health.record(origin, reason, chapter_url)
             logger.warning("check_response() blocked chapter %s: %s", chapter_url, reason)
-            return ""
+            # Raise instead of returning "": an empty string would be counted
+            # as an (retryable) empty chapter; this is a blocked fetch.
+            raise RuntimeError(
+                f"Blocked by {reason} while fetching {chapter_url}"
+            )
 
-        text = parse_chapter_body(html, self.chapter_body_selectors)
+        cleaned_html = _strip_bad_html(html)
+        text = parse_chapter_body(cleaned_html, self.chapter_body_selectors)
         if not text:
-            text = parse_text(html, self.chapter_body_selectors)
+            text = parse_text(cleaned_html, self.chapter_body_selectors)
         text = self.clean_chapter_text(text or "")
 
         if len(text) < _MIN_CHAPTER_CHARS:

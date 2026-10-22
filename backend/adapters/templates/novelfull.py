@@ -11,7 +11,6 @@ the full chapter list without pagination.
 from __future__ import annotations
 
 import logging
-import re
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
@@ -92,7 +91,10 @@ class NovelFullAdapter(SoupAdapter):
         refs = super().select_chapter_refs(html, base_url)
         if refs:
             return refs
-        # Fallback: option-value chapter picker
+        # Fallback: option-value chapter picker. Option lists are emitted
+        # NEWEST-FIRST, while ul.list-chapter (the link path above) is
+        # oldest-first — reverse here so both paths and the ajax path all
+        # yield the same ascending order (mirrors WordpressAdapter).
         soup = BeautifulSoup(html, "html.parser")
         refs = []
         for opt in soup.select("select > option[value]"):
@@ -102,6 +104,9 @@ class NovelFullAdapter(SoupAdapter):
             full_url = urljoin(base_url, href)
             title = opt.get_text(strip=True) or f"Chapter {len(refs) + 1}"
             refs.append(ChapterRef(index=len(refs), title=title, source_url=full_url))
+        refs.reverse()
+        for i, r in enumerate(refs):
+            r.index = i
         return refs
 
     async def _fetch_ajax_chapter_option(

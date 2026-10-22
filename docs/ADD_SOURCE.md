@@ -112,6 +112,13 @@ When `LNCRAWL_SOURCES_ROOT` is not set, NovelBridge checks
 The desktop app can use the same folder layout; keep the crawler checkout,
 source directory, and optional crawler dependencies available on the machine.
 
+The Windows installer and portable release bundle the LightNovelCrawler 4.14.0
+runtime, its optional Python dependencies, and the source catalog in the folder
+layout above. The GPL-3.0 license and source-catalog license/attribution files
+are included with the installed files. For local builds, provide the
+LightNovelCrawler `v4.14.0` checkout and the source directory above before
+running PyInstaller.
+
 English and Arabic sources are discovered and registered automatically; source
 modules that fail to import are reported in the application log. Each scrape
 operation gets an isolated crawler instance, and the bridge supports both

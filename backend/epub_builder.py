@@ -4,19 +4,51 @@ Produces a valid RTL Arabic EPUB from translated chapters.
 """
 from __future__ import annotations
 
-import io
 import mimetypes
-import os
+import logging
 from pathlib import Path
 from typing import List, Optional
 from html import escape
 
 from ebooklib import epub
+import httpx
 
-from backend.config import get_config
+from backend.config import get_config, output_path
 from backend.models import Chapter, Novel
 
-_OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "output"))
+logger = logging.getLogger("novelbridge.epub_builder")
+
+# Content-type aliases seen in the wild → canonical extension. Servers often
+# send "image/jpg" (non-standard), which mimetypes.guess_extension maps to
+# None and would silently drop the cover.
+_COVER_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
+}
+
+
+def _cover_extension(content_type: str, data: bytes) -> Optional[str]:
+    """Resolve a cover file extension from its content type, falling back to
+    magic-byte sniffing when the header is missing or unrecognised."""
+    extension = _COVER_EXTENSIONS.get(content_type)
+    if extension:
+        return extension
+    if data[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    if content_type.startswith("image/"):
+        return mimetypes.guess_extension(content_type)
+    return None
 
 # RTL CSS for Arabic EPUB
 _RTL_CSS = """
@@ -136,7 +168,7 @@ def build_epub(
     """
     if language != "ar":
         raise ValueError("The EPUB template currently supports Arabic only.")
-    out_dir = output_dir or _OUTPUT_DIR
+    out_dir = output_dir or output_path()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     book = epub.EpubBook()
@@ -163,16 +195,25 @@ def build_epub(
     # ── Cover image (if available) ────────────────────────────────────────────
     if novel.cover_url:
         try:
-            import httpx
             resp = httpx.get(novel.cover_url, timeout=10, follow_redirects=True)
             if resp.status_code == 200:
                 cover_data = resp.content
-                content_type = resp.headers.get("content-type", "").split(";", 1)[0].strip()
-                extension = mimetypes.guess_extension(content_type) if content_type.startswith("image/") else None
+                content_type = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                extension = _cover_extension(content_type, cover_data)
                 if extension:
                     book.set_cover(f"images/cover{extension}", cover_data)
-        except Exception:
-            pass  # Cover is optional
+                else:
+                    logger.warning("Skipping novel cover with unsupported image type")
+            else:
+                logger.warning(
+                    "Skipping novel cover after HTTP status %s",
+                    resp.status_code,
+                )
+        except (httpx.HTTPError, OSError, ValueError) as exc:
+            logger.warning(
+                "Could not add optional novel cover (%s)",
+                type(exc).__name__,
+            )
 
     # ── Title/intro page ─────────────────────────────────────────────────────
     author_block = f'<p class="author">المؤلف: {escape(novel.author)}</p>' if novel.author else ""
@@ -208,7 +249,9 @@ def build_epub(
     # Gather chapters to include: translated_text if available, else raw_text for native Arabic novels
     valid_chapters = []
     for c in chapters:
-        if volume is not None and (c.volume_serial or c.index // 100 + 1) != volume:
+        if volume is not None and (
+            c.volume_serial if c.volume_serial is not None else c.index // 100 + 1
+        ) != volume:
             continue
         text = c.translated_text if (c.translated_text and c.translated_text.strip()) else (c.raw_text if is_native_ar else None)
         if text and text.strip():
@@ -261,6 +304,6 @@ def build_epub(
     safe_title = "".join(c for c in novel.title if c.isalnum() or c in " _-").rstrip()
     volume_suffix = f".Vol_{volume:03d}" if volume is not None else ""
     language_suffix = f".{language}" if language else ""
-    output_path = out_dir / f"{safe_title or f'novel_{novel.id}'}{volume_suffix}{language_suffix}.epub"
-    epub.write_epub(str(output_path), book)
-    return output_path
+    artifact_path = out_dir / f"{safe_title or f'novel_{novel.id}'}{volume_suffix}{language_suffix}.epub"
+    epub.write_epub(str(artifact_path), book)
+    return artifact_path

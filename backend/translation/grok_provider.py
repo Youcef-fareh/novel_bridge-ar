@@ -9,7 +9,7 @@ import os
 from typing import List, Optional
 
 from dotenv import load_dotenv
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 load_dotenv()
 
@@ -18,6 +18,7 @@ from backend.translation.base import (
     TranslationProvider,
     apply_glossary_postpass,
     build_system_prompt,
+    is_retryable_error,
 )
 
 logger = logging.getLogger("novelbridge.translation.grok")
@@ -67,7 +68,7 @@ class GrokProvider(TranslationProvider):
         return apply_glossary_postpass(result, glossary)
 
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(is_retryable_error),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -86,7 +87,8 @@ class GrokProvider(TranslationProvider):
             ],
             stream=False,
         )
-        translated = response.choices[0].message.content.strip() if response.choices else ""
+        # content can be None (reasoning-only output, filtered reply).
+        translated = (response.choices[0].message.content or "").strip() if response.choices else ""
         if not translated:
             raise RuntimeError(f"Grok ({model}) returned an empty response.")
         return translated

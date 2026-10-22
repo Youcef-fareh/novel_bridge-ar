@@ -12,9 +12,7 @@ Two-step chapter-list strategy (mirrors lncrawl exactly):
 from __future__ import annotations
 
 import logging
-import re
 from typing import List, Optional
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
@@ -56,7 +54,7 @@ class WordpressAdapter(SoupAdapter):
     # If True, the honeypot-clean hook runs before body extraction
     madara_body_from_paragraphs: bool = False
 
-    async def select_chapter_refs(self, html: str, base_url: str) -> List[ChapterRef]:  # type: ignore[override]
+    def select_chapter_refs(self, html: str, base_url: str) -> List[ChapterRef]:  # type: ignore[override]
         """Override: try ajax/chapters/ then admin-ajax.php fallback."""
         # This is normally called from get_chapter_list(); we need the novel URL.
         # store it via a side-channel set by get_chapter_list hook.
@@ -66,7 +64,6 @@ class WordpressAdapter(SoupAdapter):
         self, novel_url: str, page_html: str
     ) -> Optional[List[ChapterRef]]:
         """Try the two Madara ajax strategies; return refs or None on failure."""
-        origin = base_url = self.base_url or novel_url.split("/")[2]
         clean_novel_url = novel_url.split("?")[0].rstrip("/")
 
         # Strategy 1: POST {novel}/ajax/chapters/
@@ -150,4 +147,9 @@ class WordpressAdapter(SoupAdapter):
                         refs.append(r)
                 current_url = next_url
 
+        # Same order as both ajax paths above: Madara lists newest-first, so
+        # reverse once (AFTER pagination has appended later pages) and reindex.
+        refs.reverse()
+        for i, r in enumerate(refs):
+            r.index = i
         return refs

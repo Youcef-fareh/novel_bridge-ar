@@ -10,17 +10,25 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from backend.config import output_path, resolve_path
 
 _SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 _APP_FOLDER_NAME = "NovelBridge AR"
 
 
 def _credentials_path() -> Path:
-    return Path(os.getenv("GOOGLE_DRIVE_CREDENTIALS_FILE", "config/google_client_secret.json"))
+    return resolve_path(
+        os.getenv("GOOGLE_DRIVE_CREDENTIALS_FILE", "config/google_client_secret.json")
+    )
 
 
 def _token_path() -> Path:
-    return Path(os.getenv("GOOGLE_DRIVE_TOKEN_FILE", str(Path.home() / ".novelbridge" / "google_drive_token.json")))
+    return resolve_path(
+        os.getenv(
+            "GOOGLE_DRIVE_TOKEN_FILE",
+            str(Path.home() / ".novelbridge" / "google_drive_token.json"),
+        )
+    )
 
 
 def _authorize():
@@ -40,7 +48,11 @@ def _authorize():
         flow = InstalledAppFlow.from_client_secrets_file(str(client_path), _SCOPES)
         credentials = flow.run_local_server(port=0)
     token_path.parent.mkdir(parents=True, exist_ok=True)
-    token_path.write_text(credentials.to_json(), encoding="utf-8")
+    # Write-then-replace so a crash mid-write can never leave a truncated
+    # token file behind (pattern from chapter_images.py).
+    temporary = token_path.with_suffix(token_path.suffix + ".tmp")
+    temporary.write_text(credentials.to_json(), encoding="utf-8")
+    os.replace(temporary, token_path)
     return credentials
 
 
@@ -49,9 +61,25 @@ def _find_or_create_folder(service):
         "name = 'NovelBridge AR' and mimeType = 'application/vnd.google-apps.folder' "
         "and trashed = false"
     )
-    folders = service.files().list(q=query, spaces="drive", fields="files(id, name)").execute().get("files", [])
-    if folders:
-        return folders[0]["id"]
+    # Page through the listing: an existing folder beyond the first page must
+    # be reused instead of creating a duplicate.
+    page_token = None
+    while True:
+        kwargs: dict = {
+            "q": query,
+            "spaces": "drive",
+            "fields": "nextPageToken, files(id, name)",
+            "pageSize": 100,
+        }
+        if page_token:
+            kwargs["pageToken"] = page_token
+        response = service.files().list(**kwargs).execute()
+        folders = response.get("files", [])
+        if folders:
+            return folders[0]["id"]
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
     folder = service.files().create(
         body={"name": _APP_FOLDER_NAME, "mimeType": "application/vnd.google-apps.folder"},
         fields="id",
@@ -60,11 +88,18 @@ def _find_or_create_folder(service):
 
 
 def upload_epubs(
-    output_dir: Path | str = "output",
+    output_dir: Path | str | None = None,
     progress_cb: Optional[Callable[[int, int, str], None]] = None,
+    control=None,
 ) -> int:
-    """Upload all EPUB files in *output_dir* and return the upload count."""
-    files = sorted(Path(output_dir).glob("*.epub"), key=lambda path: path.name.casefold())
+    """Upload all EPUB files in *output_dir* and return the upload count.
+
+    *control* is an optional duck-typed object exposing ``is_cancelled``;
+    cancellation is honoured between uploads so a running job can be stopped
+    instead of uploading every remaining file.
+    """
+    target_dir = output_path() if output_dir is None else resolve_path(output_dir)
+    files = sorted(target_dir.glob("*.epub"), key=lambda path: path.name.casefold())
     if not files:
         raise ValueError("No EPUB files were found in the output folder.")
 
@@ -73,6 +108,11 @@ def upload_epubs(
     total = len(files)
     uploaded = 0
     for index, path in enumerate(files, start=1):
+        if control is not None and control.is_cancelled:
+            from backend.scheduler import JobCancelledError
+            raise JobCancelledError(
+                f"Google Drive upload cancelled after {uploaded} of {total} file(s)."
+            )
         escaped_name = path.name.replace("'", "\\'")
         query = f"name = '{escaped_name}' and '{folder_id}' in parents and trashed = false"
         matches = service.files().list(q=query, spaces="drive", fields="files(id)").execute().get("files", [])

@@ -8,37 +8,36 @@ import asyncio
 import os
 import subprocess
 import sys
-import threading
 from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import (
-    QObject, QRunnable, QSettings, Qt, QThread, QThreadPool, QTimer, QUrl,
+    QObject, QRunnable, QSettings, Qt, QThreadPool, QTimer, QUrl,
     pyqtSignal, pyqtSlot,
 )
-from PyQt6.QtGui import QAction, QFont, QGuiApplication, QIcon, QPixmap
+from PyQt6.QtGui import QAction, QGuiApplication, QIcon
 from PyQt6.QtWidgets import (
     QApplication, QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
-    QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QPushButton, QSplitter,
     QProgressDialog, QSpinBox, QStatusBar, QTabWidget, QVBoxLayout, QWidget,
 )
 from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from backend.adapters.base import AdapterRegistry
 from backend.adapters import register_standard_adapters
 from backend.database import (
     create_novel, delete_novel, get_all_novels, get_chapters,
-    get_novel, get_pending_translation_chapters, init_db, update_chapter, update_novel,
+    get_novel, get_pending_translation_chapters, init_db, update_chapter,
 )
-from backend.models import Chapter, ChapterStatus, JobType, Novel, NovelStatus
+from backend.models import Chapter, ChapterStatus, JobType, Novel
 from backend.pipeline import JobControl
 from backend.scheduler import scheduler
 from backend.translation import (
     PROVIDER_DISPLAY_NAMES,
     PROVIDER_MODELS,
-    ProviderFailureError,
 )
 from backend.update_manager import (
     UpdatePlan,
@@ -78,16 +77,20 @@ class AsyncWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        from backend.scheduler import JobCancelledError
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(self._coro_factory())
             self.signals.finished.emit(result)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, JobCancelledError):
             self.signals.cancelled.emit()
         except Exception as e:
             self.signals.error.emit(str(e))
         finally:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            asyncio.set_event_loop(None)
             loop.close()
 
 
@@ -593,7 +596,7 @@ class NovelDetailPanel(QWidget):
             self.btn_translate.setVisible(False)
             self.btn_translate_sel.setVisible(False)
             self.btn_delete_translation.setVisible(False)
-            self.stat_trans.findChild(QLabel, "").setText("Ready") if hasattr(self.stat_trans, "findChild") else None
+            self.stat_trans._value_label.setText("Ready")
         else:
             self.btn_translate.setVisible(True)
             self.btn_translate_sel.setVisible(True)
@@ -909,7 +912,7 @@ class NovelDetailPanel(QWidget):
             )
             btn_switch = msg_box.addButton("🔄 Change Provider", QMessageBox.ButtonRole.ActionRole)
             btn_keys = msg_box.addButton("🔑 Open API Keys", QMessageBox.ButtonRole.ActionRole)
-            btn_close = msg_box.addButton("Close", QMessageBox.ButtonRole.RejectRole)
+            msg_box.addButton("Close", QMessageBox.ButtonRole.RejectRole)
             msg_box.setDefaultButton(btn_switch)
             msg_box.exec()
 
@@ -1177,7 +1180,14 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            delete_novel(novel_id)
+            if not delete_novel(novel_id):
+                QMessageBox.warning(
+                    self,
+                    "Delete Novel",
+                    "This novel could not be deleted because a job is still running. "
+                    "Cancel the job first, then try again.",
+                )
+                return
             self._refresh_novels()
             if self.detail_panel._novel and self.detail_panel._novel.id == novel_id:
                 self.detail_panel.clear()
@@ -1285,14 +1295,14 @@ class MainWindow(QMainWindow):
                         "request_cooldown_seconds": request_cooldown,
                     },
                     job_control=job_control,
-                    progress_cb=lambda _done, _total, message: panel.progress_requested.emit(
+                    progress_cb=lambda _done, _total, message, completed=completed, novel=novel: panel.progress_requested.emit(
                         completed, len(novels), f"{novel.title}: {message}"
                     ),
                 )
                 await scheduler.run_job(
                     novel.id,
                     JobType.build_epub,
-                    progress_cb=lambda _done, _total, message: panel.progress_requested.emit(
+                    progress_cb=lambda _done, _total, message, completed=completed, novel=novel: panel.progress_requested.emit(
                         completed, len(novels), f"{novel.title}: {message}"
                     ),
                 )
@@ -1375,12 +1385,18 @@ class HtmlMainWindow(QMainWindow):
         super().__init__()
         self._update_check_worker = None
         self._update_download_worker = None
+        self._update_check_manual = False
         self.setWindowTitle("NovelBridge — Arabic Web Novel Translator")
         self.setMinimumSize(1100, 700)
         self.resize(1280, 780)
         self._apply_icon()
 
         self._view = QWebEngineView(self)
+        # The frontend is loaded from file:// and displays remote cover URLs.
+        self._view.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
+            True,
+        )
         self._channel = QWebChannel(self._view.page())
         self._bridge = NovelBridgeWebChannel(self)
         self._channel.registerObject("novelBridge", self._bridge)
@@ -1423,16 +1439,18 @@ class HtmlMainWindow(QMainWindow):
             return
 
         worker = _UpdateCheckWorker()
-        worker.signals.completed.connect(
-            lambda plan: self._on_update_check_completed(plan, manual)
-        )
-        worker.signals.failed.connect(
-            lambda error: self._on_update_check_failed(error, manual)
-        )
+        # Connect to bound methods, NOT lambdas: PyQt executes lambdas in the
+        # emitting (worker) thread, which would build QMessageBox dialogs off
+        # the GUI thread and crash/hang. Bound methods of this window are
+        # auto-queued to the GUI thread.
+        self._update_check_manual = manual
+        worker.signals.completed.connect(self._on_update_check_completed)
+        worker.signals.failed.connect(self._on_update_check_failed)
         self._update_check_worker = worker
         QThreadPool.globalInstance().start(worker)
 
-    def _on_update_check_completed(self, plan: Optional[UpdatePlan], manual: bool) -> None:
+    def _on_update_check_completed(self, plan: Optional[UpdatePlan]) -> None:
+        manual = self._update_check_manual
         self._update_check_worker = None
         if plan is None:
             if manual:
@@ -1460,7 +1478,8 @@ class HtmlMainWindow(QMainWindow):
         if message.exec() == QMessageBox.StandardButton.Yes:
             self._download_and_install_update(plan)
 
-    def _on_update_check_failed(self, error: str, manual: bool) -> None:
+    def _on_update_check_failed(self, error: str) -> None:
+        manual = self._update_check_manual
         self._update_check_worker = None
         if manual:
             QMessageBox.warning(self, "Update Check Failed", error)

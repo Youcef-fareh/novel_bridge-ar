@@ -37,7 +37,7 @@ def test_config_saves_and_reloads_non_secret_settings(tmp_path, monkeypatch):
 
     path = tmp_path / "app-config.json"
     monkeypatch.setenv("CONFIG_PATH", str(path))
-    monkeypatch.setattr(config_module, "dotenv_values", lambda: {})
+    monkeypatch.setattr(config_module, "dotenv_values", lambda *_args, **_kwargs: {})
     config = Config.from_env({"MAX_CONCURRENT_JOBS": "4"})
     config.save()
     monkeypatch.delenv("MAX_CONCURRENT_JOBS", raising=False)
@@ -533,6 +533,162 @@ async def test_translation_context_and_hash_skip(tmp_path, monkeypatch):
 
     await pipeline.run_translation_job(novel.id)
     assert provider.calls == ["المقطع السابق"]
+
+
+@pytest.mark.asyncio
+async def test_translation_skips_chapter_without_source_text(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "translation-empty.db"))
+    import backend.database as database
+    database = importlib.reload(database)
+    database.init_db()
+    import backend.pipeline as pipeline
+    pipeline = importlib.reload(pipeline)
+
+    from backend.models import ChapterStatus
+
+    novel = database.create_novel("https://example.org/book", "example")
+    empty = database.upsert_chapter(novel.id, 0, "Empty", "https://example.org/1")
+    database.update_chapter(empty.id, raw_text="", status=ChapterStatus.failed)
+    good = database.upsert_chapter(novel.id, 1, "Good", "https://example.org/2")
+    database.update_chapter(good.id, raw_text="Source text", status=ChapterStatus.scraped)
+
+    class Provider:
+        provider_name = "test"
+        calls = []
+
+        async def translate_chapter(self, text, glossary, model=None, context=None):
+            self.calls.append(text)
+            return "ترجمة"
+
+    provider = Provider()
+    monkeypatch.setattr(pipeline, "get_provider", lambda *args, **kwargs: provider)
+
+    job = await pipeline.run_translation_job(novel.id)
+
+    assert job.status.value == "completed"
+    assert provider.calls == ["Source text"]
+    empty_after = next(c for c in database.get_chapters(novel.id) if c.id == empty.id)
+    assert empty_after.status == ChapterStatus.failed
+    assert "Skipped 1 chapter(s)" in database.get_job(job.id).current_message
+
+
+@pytest.mark.asyncio
+async def test_translation_workers_run_concurrently(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "translation-concurrent.db"))
+    import backend.database as database
+    database = importlib.reload(database)
+    database.init_db()
+    import backend.pipeline as pipeline
+    pipeline = importlib.reload(pipeline)
+
+    from backend.models import ChapterStatus
+
+    novel = database.create_novel("https://example.org/book", "example")
+    for index in range(2):
+        chapter = database.upsert_chapter(
+            novel.id, index, f"Chapter {index}", f"https://example.org/{index}"
+        )
+        database.update_chapter(
+            chapter.id, raw_text=f"Source {index}", status=ChapterStatus.scraped
+        )
+
+    class Provider:
+        provider_name = "test"
+        active = 0
+        peak = 0
+
+        async def translate_chapter(self, text, glossary, model=None, context=None):
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+            try:
+                await asyncio.sleep(0.05)
+            finally:
+                self.active -= 1
+            return f"ترجمة {text}"
+
+    provider = Provider()
+    monkeypatch.setattr(pipeline, "get_provider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(pipeline, "_max_concurrent_jobs", lambda: 2)
+
+    job = await pipeline.run_translation_job(novel.id)
+
+    assert job.status.value == "completed"
+    assert provider.peak == 2
+
+
+def test_calibre_conversions_keep_chapter_images(tmp_path, monkeypatch):
+    from backend import binder
+    from backend.models import Chapter, ChapterStatus, Novel
+
+    captured = {}
+
+    def fake_build_epub(novel, chapters, output_dir, *, volume=None, language="ar", chapter_images=None):
+        captured["chapter_images"] = chapter_images
+        path = output_dir / "source.epub"
+        path.write_bytes(b"epub")
+        return path
+
+    monkeypatch.setattr(binder, "build_epub", fake_build_epub)
+    monkeypatch.setattr(binder, "available_formats", lambda _command: {"pdf"})
+    monkeypatch.setattr(
+        binder,
+        "get_config",
+        lambda: SimpleNamespace(
+            calibre=SimpleNamespace(
+                api_enabled=False,
+                api_url="",
+                api_fallback_to_local=True,
+                command="ebook-convert",
+            )
+        ),
+    )
+    monkeypatch.setattr(binder.shutil, "which", lambda _command: None)
+
+    novel = Novel(id=1, title="Novel", source_url="https://example.org", source_site="example")
+    chapter = Chapter(
+        id=2,
+        novel_id=1,
+        index=0,
+        title="Chapter",
+        source_url="https://example.org/chapter",
+        translated_text="نص",
+        status=ChapterStatus.translated,
+    )
+    images = {2: [SimpleNamespace(alt_text="")]}
+
+    with pytest.raises(ValueError):
+        binder.make_artifact(novel, [chapter], "pdf", tmp_path, chapter_images=images)
+
+    assert captured["chapter_images"] is images
+
+
+@pytest.mark.asyncio
+async def test_fetch_accepts_short_valid_response(monkeypatch):
+    from backend.adapters import fetcher
+    from backend.adapters.scraper_state import scraper_state
+
+    class Context:
+        async def wait(self):
+            return None
+
+        def learn(self, success, status_code=200):
+            return None
+
+    monkeypatch.setattr(scraper_state, "open", lambda *args: Context())
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url):
+            return SimpleNamespace(status_code=200, text="ok")
+
+    monkeypatch.setattr(fetcher.httpx, "AsyncClient", lambda **_kwargs: Client())
+
+    assert await fetcher.fetch_html("https://example.org/short") == "ok"
 
 
 def test_explicit_source_volume_metadata_overrides_fallback(tmp_path, monkeypatch):

@@ -21,7 +21,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Dict, Optional
-from urllib.parse import urlparse
+from backend.config import resolve_path
 
 logger = logging.getLogger("novelbridge.scraper_state")
 
@@ -35,7 +35,7 @@ _MEMORY_LIMIT = 500    # LRU cap on persisted origins
 
 _DEFAULT_INTERVAL = float(os.getenv("DEFAULT_SCRAPE_INTERVAL", "0.5"))
 
-_MEMORY_PATH = Path(os.getenv("SCRAPER_MEMORY_PATH", "data/scraper_memory.json"))
+_MEMORY_PATH = resolve_path(os.getenv("SCRAPER_MEMORY_PATH", "data/scraper_memory.json"))
 
 # ── User-Agent (single owner — adapters must not set UA themselves) ────────────
 
@@ -158,13 +158,20 @@ class _Memory:
 # ── Pacer ──────────────────────────────────────────────────────────────────────
 
 class Pacer:
-    """Async pacing gate: learns intervals from measurement."""
+    """Async pacing gate: learns intervals from measurement.
+
+    Concurrency-safe by atomically reserving each caller's next fire slot
+    under a threading lock. (A naive read/sleep/write races when two
+    coroutines enter wait() together — both read the same "last call", sleep
+    the same amount and fire simultaneously, halving the effective interval.
+    Per-origin asyncio.Lock is not an option here because wait() is called
+    from multiple event loops — one per GUI worker thread.)
+    """
 
     def __init__(self, memory: _Memory) -> None:
         self._memory = memory
-        self._lock = asyncio.Lock() if False else threading.Lock()  # sync lock for _last_call
+        self._lock = threading.Lock()  # guards _last_call
         self._last_call: Dict[str, float] = {}   # origin -> monotonic clock
-        self._async_locks: Dict[str, asyncio.Lock] = {}
 
     def _get_profile(self, origin: str) -> OriginProfile:
         data = self._memory.get(origin)
@@ -185,15 +192,20 @@ class Pacer:
             self._save_profile(p)
 
     async def wait(self, origin: str) -> None:
-        """Wait the learned interval before fetching from *origin*."""
-        profile = self._get_profile(origin)
-        now = time.monotonic()
-        last = self._last_call.get(origin, 0.0)
-        elapsed = now - last
-        sleep_for = max(0.0, profile.mean_interval - elapsed)
+        """Wait the learned interval before fetching from *origin*.
+
+        The next fire slot is reserved atomically, so concurrent waiters for
+        the same origin queue up in intervals instead of firing together.
+        """
+        with self._lock:
+            now = time.monotonic()
+            last = self._last_call.get(origin, 0.0)
+            profile = self._get_profile(origin)
+            sleep_for = max(0.0, profile.mean_interval - (now - last))
+            # Reserve our fire time; later waiters measure against this.
+            self._last_call[origin] = now + sleep_for
         if sleep_for > 0:
             await asyncio.sleep(sleep_for)
-        self._last_call[origin] = time.monotonic()
 
     def learn(self, origin: str, success: bool, status_code: int = 200) -> None:
         """Update the learned interval after a fetch.
@@ -204,7 +216,8 @@ class Pacer:
         """
         profile = self._get_profile(origin)
         if success:
-            last = self._last_call.get(origin, 0.0)
+            with self._lock:
+                last = self._last_call.get(origin, 0.0)
             observed_gap = time.monotonic() - last
             profile.mean_interval = (
                 (1 - _ALPHA) * profile.mean_interval + _ALPHA * observed_gap

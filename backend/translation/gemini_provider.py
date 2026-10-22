@@ -11,7 +11,7 @@ from typing import List
 from dotenv import load_dotenv
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -23,6 +23,7 @@ from backend.translation.base import (
     TranslationProvider,
     apply_glossary_postpass,
     build_system_prompt,
+    is_retryable_error,
 )
 
 _API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -138,7 +139,7 @@ class GeminiProvider(TranslationProvider):
         return apply_glossary_postpass(result, glossary)
 
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(is_retryable_error),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(3),
         reraise=True,

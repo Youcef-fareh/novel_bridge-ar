@@ -6,13 +6,16 @@ The PyQt6 GUI calls backend functions directly (in-process).
 from __future__ import annotations
 
 import asyncio
-import os
+from contextlib import asynccontextmanager
+import httpx
+import logging
 from pathlib import Path
+import threading
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 import inspect
 from urllib.parse import urlparse
@@ -20,30 +23,47 @@ from urllib.parse import urlparse
 from backend.adapters import register_standard_adapters
 from backend.adapters.base import AdapterRegistry
 from backend.adapters.health import get_source_health
+from backend.adapters.preferences import get_preferences
 from backend.adapters.scraper_state import get_pacer
 from backend.api_errors import install_exception_handlers
-from backend.config import get_config
+from backend.chapter_images import _download_image
+from backend.config import get_config, output_path
+from backend.logging_setup import diagnostics_archive, setup_logging
 from backend.database import (
     add_glossary_rule, create_novel, delete_glossary_rule,
     delete_novel_glossary_term, get_all_glossary_rules, get_all_novels,
     get_chapters, get_job, get_novel, get_novel_glossary as load_novel_glossary, init_db,
     get_chapter_image, get_novel_chapter_images, get_novels_page,
     get_volumes, list_jobs, replay_job, set_novel_glossary_term,
-    update_novel,
 )
 from backend.glossary_suggestions import suggest_glossary_terms
-from backend.models import ChapterStatus, JobStatus, NovelStatus
+from backend.models import JobStatus
 from backend.models import JobType
-from backend.scheduler import scheduler
+from backend.scheduler import JobCancelledError, scheduler
 from backend.schemas import ArtifactRequest, JobSummary, NovelSummary, Paginated
 
 # ── App init ──────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    setup_logging()
+    get_config()
+    init_db()
+    register_standard_adapters()
+    scheduler.start()
+    try:
+        yield
+    finally:
+        await asyncio.to_thread(scheduler.stop, 30)
+
 
 app = FastAPI(
     title="NovelBridge API",
     description="Web novel scraper + Arabic translator + EPUB generator",
     version="0.1.0",
+    lifespan=lifespan,
 )
+logger = logging.getLogger("novelbridge.search")
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,19 +72,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 install_exception_handlers(app)
-
-
-@app.on_event("startup")
-async def startup():
-    get_config()
-    init_db()
-    register_standard_adapters()
-    scheduler.start()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await asyncio.to_thread(scheduler.stop, 30)
 
 
 # ── Request/Response schemas ───────────────────────────────────────────────────
@@ -226,7 +233,7 @@ async def download_epub(novel_id: int):
             novel_id, JobType.build_epub, options={"format": "epub"}
         )
         if not job.output_path:
-            raise RuntimeError(f"EPUB job {job.id} completed without an output path")
+            raise HTTPException(500, f"EPUB job {job.id} completed without an output path")
         epub_path = Path(job.output_path)
         return FileResponse(
             path=str(epub_path),
@@ -235,6 +242,10 @@ async def download_epub(novel_id: int):
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except JobCancelledError as e:
+        raise HTTPException(409, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
 
 
 # ── Job endpoints ──────────────────────────────────────────────────────────────
@@ -403,7 +414,11 @@ async def remove_novel_glossary_term(novel_id: int, source_term: str):
 
 @app.post("/glossary", status_code=201)
 async def create_glossary_rule(req: AddGlossaryRequest):
-    rule = add_glossary_rule(req.source_term, req.target_term, req.notes or "")
+    source_term = (req.source_term or "").strip()
+    target_term = (req.target_term or "").strip()
+    if not source_term or not target_term:
+        raise HTTPException(422, "Glossary source and target terms must not be empty")
+    rule = add_glossary_rule(source_term, target_term, req.notes or "")
     return {"id": rule.id, "source_term": rule.source_term, "target_term": rule.target_term}
 
 
@@ -465,13 +480,27 @@ async def source_diagnosis(site_id: str):
 
 
 @app.get("/search")
-async def search_sources(
-    query: str = Query(min_length=2, max_length=50),
-    domain: Optional[str] = None,
-    limit: int = Query(default=20, ge=1, le=50),
+def _search_adapters(
+    domain: Optional[str],
+    source_language: Optional[str],
+    category: Optional[str],
 ):
-    results = []
+    searchers = []
+    enabled_adapters = get_preferences()["enabled_adapters"]
     for adapter in AdapterRegistry._adapters.values():
+        if enabled_adapters.get(adapter.site_id, True) is False:
+            continue
+        is_native_arabic = bool(getattr(adapter, "is_native_arabic", False))
+        adapter_language = str(getattr(adapter, "source_language", "")).casefold()
+        if source_language == "en-ar" and (is_native_arabic or adapter_language != "english"):
+            continue
+        if source_language == "ar-ar" and not is_native_arabic:
+            continue
+        adapter_category = getattr(adapter, "category", "") or (
+            "arabic" if is_native_arabic else "webnovel"
+        )
+        if category and category != "all" and str(adapter_category).casefold() != category.casefold():
+            continue
         adapter_base_url = getattr(adapter, "base_url", "")
         if isinstance(adapter_base_url, (list, tuple)):
             adapter_base_url = adapter_base_url[0] if adapter_base_url else ""
@@ -488,23 +517,131 @@ async def search_sources(
         search = getattr(adapter, "search", None)
         if not getattr(adapter, "can_search", False) or not callable(search):
             continue
-        remaining = limit - len(results)
-        if "limit" in inspect.signature(search).parameters:
-            found = search(query, limit=remaining)
-        else:
-            found = search(query)
-        if inspect.isawaitable(found):
-            found = await found
-        results.extend((found or [])[:remaining])
-        if len(results) >= limit:
-            break
-    results = results[:limit]
-    if not any(
-        getattr(adapter, "can_search", False) and callable(getattr(adapter, "search", None))
+        searchers.append((adapter, search))
+    return searchers
+
+
+async def search_sources_progressive(
+    query: str,
+    *,
+    domain: Optional[str] = None,
+    limit: int = 20,
+    source_language: Optional[str] = None,
+    category: Optional[str] = None,
+    on_progress=None,
+    on_results=None,
+    cancel_event: Optional[threading.Event] = None,
+    source_timeout: float = 20,
+):
+    searchers = _search_adapters(domain, source_language, category)
+    enabled_adapters = get_preferences()["enabled_adapters"]
+    if not searchers and not any(
+        enabled and getattr(adapter, "can_search", False)
+        and callable(getattr(adapter, "search", None))
         for adapter in AdapterRegistry._adapters.values()
+        for enabled in (enabled_adapters.get(adapter.site_id, True) is not False,)
     ):
         raise HTTPException(501, "No registered source adapter supports search.")
-    return {"query": query, "items": results, "total": len(results)}
+    if not searchers:
+        return {"query": query, "items": [], "total": 0, "failed": 0, "cancelled": False}
+
+    semaphore = asyncio.Semaphore(5)
+    total = len(searchers)
+    completed = 0
+    failed = 0
+    results = []
+
+    def progress(current: str = ""):
+        if on_progress:
+            on_progress({
+                "completed": completed,
+                "total": total,
+                "current": current,
+                "running": max(0, total - completed),
+                "failed": failed,
+                "result_count": len(results),
+            })
+
+    async def search_adapter(adapter, search):
+        nonlocal completed, failed
+        async with semaphore:
+            if cancel_event and cancel_event.is_set():
+                return
+            progress(adapter.site_id)
+            try:
+                kwargs = {"limit": limit} if "limit" in inspect.signature(search).parameters else {}
+                if inspect.iscoroutinefunction(search):
+                    found = await asyncio.wait_for(search(query, **kwargs), timeout=source_timeout)
+                else:
+                    found = await asyncio.wait_for(
+                        asyncio.to_thread(search, query, **kwargs),
+                        timeout=source_timeout,
+                    )
+                    if inspect.isawaitable(found):
+                        found = await asyncio.wait_for(found, timeout=source_timeout)
+                batch = list(found or [])[:limit]
+                results.extend(batch)
+                if on_results and batch:
+                    on_results(adapter.site_id, batch)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                failed += 1
+                logger.warning("Source search failed for adapter %s: %s", adapter.site_id, exc)
+            finally:
+                completed += 1
+                progress()
+
+    tasks = [asyncio.create_task(search_adapter(adapter, search)) for adapter, search in searchers]
+    pending = set(tasks)
+    cancelled = False
+    try:
+        while pending:
+            if cancel_event and cancel_event.is_set():
+                cancelled = True
+                for task in pending:
+                    task.cancel()
+                break
+            done, pending = await asyncio.wait(
+                pending, timeout=0.1, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in done:
+                task.result()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        if cancelled:
+            # Mark sources that did not complete as no longer running.
+            completed = total
+            progress()
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    return {
+        "query": query,
+        "items": results[:limit * max(1, total)],
+        "total": len(results),
+        "failed": failed,
+        "cancelled": cancelled,
+    }
+
+
+@app.get("/search")
+async def search_sources(
+    query: str = Query(min_length=2, max_length=50),
+    domain: Optional[str] = None,
+    limit: int = Query(default=20, ge=1, le=50),
+    source_language: Optional[str] = None,
+    category: Optional[str] = None,
+):
+    return await search_sources_progressive(
+        query,
+        domain=domain,
+        limit=limit,
+        source_language=source_language,
+        category=category,
+    )
 
 
 @app.get("/novels/{novel_id}/cover")
@@ -514,7 +651,16 @@ async def novel_cover(novel_id: int):
         raise HTTPException(404, "Novel not found")
     if not novel.cover_url:
         raise HTTPException(404, "Novel cover not found")
-    return RedirectResponse(novel.cover_url)
+    try:
+        async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
+            image, media_type = await _download_image(client, novel.cover_url)
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        raise HTTPException(502, f"Could not fetch novel cover: {exc}") from exc
+    return Response(
+        content=image,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @app.get("/chapters/{chapter_id}/image/{image_id}")
@@ -563,7 +709,7 @@ async def download_artifact(job_id: int):
         raise HTTPException(404, "Artifact job not found")
     if job.status != JobStatus.completed or not job.output_path:
         raise HTTPException(409, "Artifact is not ready for download")
-    output_root = get_config().paths.output.resolve()
+    output_root = output_path()
     artifact_path = Path(job.output_path).resolve()
     if not artifact_path.is_relative_to(output_root):
         raise HTTPException(403, "Artifact path is outside the output directory")
@@ -575,6 +721,21 @@ async def download_artifact(job_id: int):
 @app.get("/settings")
 async def public_settings():
     return get_config().to_public_dict()
+
+
+@app.get("/diagnostics/logs/export")
+async def export_diagnostic_logs():
+    if not get_config().diagnostics.allow_export:
+        raise HTTPException(403, "Export disabled in settings")
+    payload = diagnostics_archive()
+    return StreamingResponse(
+        iter((payload,)),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="NovelBridge-diagnostics.zip"',
+            "Content-Length": str(len(payload)),
+        },
+    )
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

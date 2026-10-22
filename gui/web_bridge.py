@@ -7,13 +7,28 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import QFileDialog, QDialog, QInputDialog, QLineEdit, QMessageBox
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, QUrl, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QDialog,
+    QInputDialog,
+    QLineEdit,
+    QMessageBox,
+)
 
 from backend.adapters.base import AdapterRegistry
+from backend.config import output_path
+from backend.adapters.preferences import (
+    get_preferences,
+    save_preferences,
+    set_adapter_enabled,
+)
 from backend.database import (
     add_glossary_rule,
     delete_glossary_rule,
@@ -23,15 +38,41 @@ from backend.database import (
     get_chapters,
     get_pending_translation_chapters,
     get_novel,
-    update_novel,
 )
 from backend.models import ChapterStatus, JobType
 from backend.pipeline import JobControl
 from backend.scheduler import scheduler
 from backend.translation import GeminiProvider, GroqProvider, GrokProvider, OrcaRouterProvider, TokenRouterProvider
-from gui.widgets.api_keys import ENV_FILE, _PROVIDER_GROUPS, _read_env_file, _write_env_file
+from gui.widgets.api_keys import ENV_FILE, _PROVIDER_GROUPS, _read_env_file, _write_env_file  # noqa: F401 - ENV_FILE is part of the bridge's test/config surface
+
+
+def _apply_env(env: dict) -> None:
+    """Sync written .env values into os.environ — including clearing empties.
+
+    Setting a key to "" must REMOVE it from os.environ: providers read the
+    process env (os.getenv), so a cleared key that lingers keeps the provider
+    "configured" with a dead key and causes 401 retry loops until restart.
+    """
+    for key, value in env.items():
+        if value:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
 
 logger = logging.getLogger(__name__)
+
+
+def _source_search_completion(result: dict) -> str:
+    """Serialize only completion metadata; result records were already streamed."""
+    return json.dumps(
+        {
+            "query": result["query"],
+            "total": result["total"],
+            "failed": result["failed"],
+            "cancelled": result["cancelled"],
+        },
+        ensure_ascii=False,
+    )
 
 
 class _AsyncWorkerSignals(QObject):
@@ -48,16 +89,20 @@ class _AsyncWorker(QRunnable):
 
     @pyqtSlot()
     def run(self):
+        from backend.scheduler import JobCancelledError
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(self._coroutine_factory())
             self.signals.finished.emit(result)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, JobCancelledError):
             self.signals.cancelled.emit()
         except Exception as exc:
             self.signals.error.emit(str(exc))
         finally:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            asyncio.set_event_loop(None)
             loop.close()
 
 
@@ -68,11 +113,18 @@ class NovelBridgeWebChannel(QObject):
     job_progress = pyqtSignal(int, int, str)
     job_finished = pyqtSignal(str)
     job_error = pyqtSignal(str)
+    provider_test_finished = pyqtSignal(str)
+    source_search_progress = pyqtSignal(str, str)
+    source_search_results = pyqtSignal(str, str)
+    source_search_finished = pyqtSignal(str, str)
+    source_search_error = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._thread_pool = QThreadPool.globalInstance()
         self._job_control: Optional[JobControl] = None
+        self._source_searches: dict[str, threading.Event] = {}
+        self._source_searches_lock = threading.Lock()
 
     @staticmethod
     def _novel_data(novel) -> dict:
@@ -138,6 +190,7 @@ class NovelBridgeWebChannel(QObject):
         return providers
 
     def snapshot(self) -> dict:
+        preferences = get_preferences()
         return {
             "novels": [self._novel_data(novel) for novel in get_all_novels()],
             "glossary": [
@@ -145,6 +198,7 @@ class NovelBridgeWebChannel(QObject):
                 for rule in get_all_glossary_rules()
             ],
             "providers": self._provider_data(),
+            "source_preferences": preferences,
             "adapters": [
                 {
                     "site_id": item["site_id"],
@@ -152,16 +206,134 @@ class NovelBridgeWebChannel(QObject):
                     "source": "Built-in",
                     "base_urls": item["base_urls"],
                     "source_language": item["source_language"],
+                    "category": item["category"],
+                    "enabled": item["enabled"],
+                    "can_search": item["can_search"],
                     "is_native_arabic": item["is_native_arabic"],
                 }
                 for item in AdapterRegistry.list_all()
-                if item["site_id"] != "galaxynovels"
             ],
         }
 
     @pyqtSlot(result=str)
     def get_snapshot(self) -> str:
         return json.dumps(self.snapshot(), ensure_ascii=False)
+
+    @pyqtSlot(str, str, str, str, str, int, result=bool)
+    def search_sources(
+        self,
+        search_id: str,
+        query: str,
+        source_site: str,
+        source_language: str,
+        category: str,
+        limit: int,
+    ) -> bool:
+        query = query.strip()
+        if len(query) < 2 or len(query) > 50 or not 1 <= limit <= 50:
+            return False
+        if source_language not in {"all", "en-ar", "ar-ar"}:
+            return False
+        if category not in {"all", "webnovel", "arabic"}:
+            return False
+
+        cancel_event = threading.Event()
+        with self._source_searches_lock:
+            if search_id in self._source_searches:
+                return False
+            self._source_searches[search_id] = cancel_event
+
+        async def work():
+            from backend.main import search_sources_progressive
+
+            def emit_progress(progress):
+                self.source_search_progress.emit(
+                    search_id, json.dumps(progress, ensure_ascii=False)
+                )
+
+            def emit_results(site_id, batch):
+                adapter = AdapterRegistry._adapters.get(site_id)
+                language = getattr(adapter, "source_language", "Unknown")
+                payload = {
+                    "site_id": site_id,
+                    "language": language,
+                    "items": [
+                        item if isinstance(item, dict) else {
+                            "title": item.title,
+                            "url": item.url,
+                            "source_site": item.source_site,
+                            "cover_url": getattr(item, "cover_url", None),
+                        }
+                        for item in batch
+                    ],
+                }
+                self.source_search_results.emit(
+                    search_id, json.dumps(payload, ensure_ascii=False)
+                )
+
+            try:
+                return await search_sources_progressive(
+                    query=query,
+                    domain=source_site or None,
+                    limit=limit,
+                    source_language=source_language,
+                    category=category,
+                    on_progress=emit_progress,
+                    on_results=emit_results,
+                    cancel_event=cancel_event,
+                )
+            finally:
+                with self._source_searches_lock:
+                    self._source_searches.pop(search_id, None)
+
+        worker = _AsyncWorker(work)
+        worker.signals.finished.connect(
+            lambda result: self.source_search_finished.emit(
+                search_id, _source_search_completion(result)
+            )
+        )
+        worker.signals.error.connect(
+            lambda message: self.source_search_error.emit(search_id, message)
+        )
+        self._thread_pool.start(worker)
+        return True
+
+    @pyqtSlot(str, result=bool)
+    def cancel_source_search(self, search_id: str) -> bool:
+        with self._source_searches_lock:
+            cancel_event = self._source_searches.get(search_id)
+        if not cancel_event:
+            return False
+        cancel_event.set()
+        return True
+
+    @pyqtSlot(str, bool, result=bool)
+    def set_adapter_enabled(self, site_id: str, enabled: bool) -> bool:
+        if site_id not in AdapterRegistry._adapters:
+            return False
+        try:
+            set_adapter_enabled(site_id, enabled)
+        except (OSError, ValueError, RuntimeError):
+            logger.exception("Could not update enabled state for adapter %s", site_id)
+            return False
+        self.state_changed.emit("adapters")
+        return True
+
+    @pyqtSlot(int, str, str, result=bool)
+    def save_source_preferences(
+        self, search_limit: int, source_language: str, category: str
+    ) -> bool:
+        try:
+            save_preferences(
+                search_limit=search_limit,
+                source_language=source_language,
+                category=category,
+            )
+        except (OSError, ValueError, RuntimeError):
+            logger.exception("Could not save source preferences")
+            return False
+        self.state_changed.emit("source_preferences")
+        return True
 
     @pyqtSlot(str, result=str)
     def add_novel(self, url: str) -> str:
@@ -303,8 +475,9 @@ class NovelBridgeWebChannel(QObject):
             return await asyncio.get_event_loop().run_in_executor(
                 None,
                 upload_epubs,
-                Path(os.getenv("OUTPUT_DIR", "output")),
+                output_path(),
                 self._progress,
+                control,
             )
 
         worker = _AsyncWorker(work)
@@ -446,6 +619,74 @@ class NovelBridgeWebChannel(QObject):
         except OSError:
             return False
 
+    @pyqtSlot(result=str)
+    def get_diagnostics_settings(self) -> str:
+        from backend.config import get_config
+
+        return json.dumps({
+            "allow_export": get_config().diagnostics.allow_export,
+            "log_level": get_config().diagnostics.log_level,
+        })
+
+    @pyqtSlot(bool, str, result=bool)
+    def save_diagnostics_settings(self, allow_export: bool, log_level: str) -> bool:
+        from backend.config import update_diagnostics_settings
+        from backend.logging_setup import setup_logging
+
+        try:
+            update_diagnostics_settings(allow_export, log_level)
+            setup_logging()
+        except (OSError, ValueError):
+            logger.exception("Could not save developer logging settings")
+            return False
+        return True
+
+    @pyqtSlot(result=bool)
+    def export_diagnostic_logs(self) -> bool:
+        from backend.config import get_config
+        from backend.logging_setup import diagnostics_archive
+
+        if not get_config().diagnostics.allow_export:
+            return False
+        destination, _ = QFileDialog.getSaveFileName(
+            self.parent(),
+            "Export NovelBridge diagnostics",
+            str(Path.home() / "NovelBridge-diagnostics.zip"),
+            "ZIP archives (*.zip)",
+        )
+        if not destination:
+            return False
+        try:
+            Path(destination).write_bytes(diagnostics_archive())
+        except OSError:
+            logger.exception("Could not export diagnostic logs")
+            QMessageBox.warning(self.parent(), "Export failed", "Could not write the diagnostics archive.")
+            return False
+        return True
+
+    @pyqtSlot(result=bool)
+    def open_logs_folder(self) -> bool:
+        from backend.logging_setup import logs_dir
+
+        try:
+            directory = logs_dir()
+            directory.mkdir(parents=True, exist_ok=True)
+            return QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
+        except OSError:
+            logger.exception("Could not open the logs folder")
+            return False
+
+    @pyqtSlot(result=bool)
+    def copy_diagnostics(self) -> bool:
+        from backend.logging_setup import diagnostics_summary
+
+        try:
+            QApplication.clipboard().setText(diagnostics_summary())
+        except OSError:
+            logger.exception("Could not prepare diagnostics for the clipboard")
+            return False
+        return True
+
     @pyqtSlot(str, result=bool)
     def edit_provider_key(self, prefix: str) -> bool:
         value, ok = QInputDialog.getText(
@@ -459,9 +700,7 @@ class NovelBridgeWebChannel(QObject):
         env = _read_env_file()
         env[f"{prefix}_API_KEY"] = value.strip()
         _write_env_file(env)
-        for key, item in env.items():
-            if item:
-                os.environ[key] = item
+        _apply_env(env)
         self.state_changed.emit("providers")
         return True
 
@@ -473,11 +712,7 @@ class NovelBridgeWebChannel(QObject):
             _write_env_file(env)
         except OSError:
             return False
-        for key, item in env.items():
-            if item:
-                os.environ[key] = item
-            else:
-                os.environ.pop(key, None)
+        _apply_env(env)
         self.state_changed.emit("providers")
         return True
 
@@ -498,15 +733,19 @@ class NovelBridgeWebChannel(QObject):
             _write_env_file(env)
         except OSError:
             return False
-        for key, value in env.items():
-            if value:
-                os.environ[key] = value
+        _apply_env(env)
         self.state_changed.emit("providers")
         return True
 
     @pyqtSlot(str, str, result=str)
     def test_provider(self, prefix: str, model: str) -> str:
-        """Make a minimal live request to verify provider credentials and model."""
+        """Start a minimal live request to verify provider credentials/model.
+
+        The network call runs on a worker thread — performing it inline here
+        would freeze the entire Qt UI until the provider responds (or times
+        out). Returns immediately with {"pending": true}; the result is
+        delivered via the provider_test_finished signal.
+        """
         provider_classes = {
             "gemini": GeminiProvider,
             "groq": GroqProvider,
@@ -523,15 +762,30 @@ class NovelBridgeWebChannel(QObject):
             return json.dumps({"ok": False, "error": f"{prefix} API key is not configured."})
 
         selected_model = model.strip() or getattr(provider, "_model", "")
-        try:
-            response = provider._call_api(
-                "Reply with the single word OK.",
-                "Reply with the single word OK.",
-                selected_model,
+
+        def run_test() -> str:
+            try:
+                response = provider._call_api(
+                    "Reply with the single word OK.",
+                    "Reply with the single word OK.",
+                    selected_model,
+                )
+                return json.dumps({"ok": bool(response.strip()), "model": selected_model})
+            except Exception as exc:
+                return json.dumps({"ok": False, "error": str(exc)})
+
+        worker = _AsyncWorker(run_test)
+        worker.signals.finished.connect(
+            lambda raw: self.provider_test_finished.emit(str(raw))
+        )
+        worker.signals.error.connect(self.provider_test_finished.emit)
+        worker.signals.cancelled.connect(
+            lambda: self.provider_test_finished.emit(
+                json.dumps({"ok": False, "error": "Provider test was cancelled."})
             )
-            return json.dumps({"ok": bool(response.strip()), "model": selected_model})
-        except Exception as exc:
-            return json.dumps({"ok": False, "error": str(exc)})
+        )
+        self._thread_pool.start(worker)
+        return json.dumps({"pending": True})
 
     @pyqtSlot(result=bool)
     def add_provider(self) -> bool:
@@ -550,9 +804,7 @@ class NovelBridgeWebChannel(QObject):
             _write_env_file(env)
         except OSError:
             return False
-        for key, value in env.items():
-            if value:
-                os.environ[key] = value
+        _apply_env(env)
         self.state_changed.emit("providers")
         return True
 
@@ -572,9 +824,7 @@ class NovelBridgeWebChannel(QObject):
             _write_env_file(env)
         except OSError as exc:
             return json.dumps({"ok": False, "error": str(exc)})
-        for key, value in env.items():
-            if value:
-                os.environ[key] = value
+        _apply_env(env)
         self.state_changed.emit("providers")
         return json.dumps({"ok": True})
 

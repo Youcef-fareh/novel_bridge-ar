@@ -5,27 +5,25 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import List
-from urllib.parse import urljoin, urlparse
 
 try:
     from selectolax.parser import HTMLParser
     _SELECTOLAX_AVAILABLE = True
 except ImportError:
     _SELECTOLAX_AVAILABLE = False
-    from bs4 import BeautifulSoup
 
-from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter
+from backend.adapters.base import ChapterRef, NovelMeta, SiteAdapter, host_matches
 from backend.adapters.fetcher import (
     fetch_html, parse_chapter_body, parse_cover_url, parse_links, parse_text
 )
+from backend.config import resolve_path
 
 _SITE_ID = "novelphoenix"
 _BASE    = "https://novelphoenix.com"
 
 # Load selectors from config
-_cfg_path = Path("config/sites.json")
+_cfg_path = resolve_path("config/sites.json")
 _SEL: dict = {}
 if _cfg_path.exists():
     _SEL = json.loads(_cfg_path.read_text(encoding="utf-8")).get(_SITE_ID, {}).get("selectors", {})
@@ -36,11 +34,27 @@ def _split_selectors(value: str) -> list[str]:
     return [s.strip() for s in value.split(",") if s.strip()]
 
 
+# Pagination/TOC/list links whose path merely CONTAINS "/chapter" (e.g.
+# "/novel/x/chapters?page=2" — the endswith("/chapters") check misses it
+# because of the query string) used to be collected as chapters.
+_NON_CHAPTER_HREF_RE = re.compile(
+    r"[?&]page|/chapters(?:[/?#]|$)|chapter-list|/toc(?:[/?#]|$)|/table-of-contents",
+    re.IGNORECASE,
+)
+
+
+def _is_chapter_href(href: str) -> bool:
+    """True only for canonical chapter URLs, excluding pagination/TOC links."""
+    if not href or "/chapter" not in href:
+        return False
+    return _NON_CHAPTER_HREF_RE.search(href) is None
+
+
 class NovelPhoenixAdapter(SiteAdapter):
     site_id = _SITE_ID
 
     def can_handle(self, url: str) -> bool:
-        return "novelphoenix.com" in url or "novelphoenix.net" in url
+        return host_matches(url, ("novelphoenix.com", "novelphoenix.net"))
 
     async def get_novel_metadata(self, novel_url: str) -> NovelMeta:
         html = await fetch_html(novel_url, _SITE_ID)
@@ -107,7 +121,7 @@ class NovelPhoenixAdapter(SiteAdapter):
                     if not a_tag:
                         continue
                     href = a_tag.attributes.get("href", "")
-                    if not href or "/chapter" not in href or href.endswith("/chapters") or href in seen_urls:
+                    if not _is_chapter_href(href) or href in seen_urls:
                         continue
                     seen_urls.add(href)
                     if href.startswith("/"):
@@ -129,7 +143,7 @@ class NovelPhoenixAdapter(SiteAdapter):
             else:
                 links = parse_links(html, selectors, base_url=_BASE)
                 for text, href in links:
-                    if href and "/chapter" in href and not href.endswith("/chapters") and href not in seen_urls:
+                    if _is_chapter_href(href) and href not in seen_urls:
                         seen_urls.add(href)
                         refs.append(ChapterRef(index=len(refs), title=text.strip() or f"Chapter {len(refs)+1}", source_url=href))
                         new_on_page += 1
