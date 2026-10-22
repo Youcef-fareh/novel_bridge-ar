@@ -117,6 +117,8 @@ _BR_HTML = (
 def test_parse_chapter_body_br_newlines(selectolax_on, monkeypatch):
     import backend.adapters.fetcher as fetcher
 
+    if selectolax_on and not fetcher._SELECTOLAX_AVAILABLE:
+        pytest.skip("selectolax is unavailable")
     monkeypatch.setattr(fetcher, "_SELECTOLAX_AVAILABLE", selectolax_on)
     result = fetcher.parse_chapter_body(_BR_HTML, ["#c"])
     assert "line a\nline b" in result
@@ -128,6 +130,8 @@ def test_parse_chapter_body_br_newlines(selectolax_on, monkeypatch):
 def test_parse_chapter_body_br_without_paragraphs(selectolax_on, monkeypatch):
     import backend.adapters.fetcher as fetcher
 
+    if selectolax_on and not fetcher._SELECTOLAX_AVAILABLE:
+        pytest.skip("selectolax is unavailable")
     monkeypatch.setattr(fetcher, "_SELECTOLAX_AVAILABLE", selectolax_on)
     html = '<div id="c">No paragraph here<br>second line<br><br>third line</div>'
     result = fetcher.parse_chapter_body(html, ["#c"])
@@ -137,6 +141,8 @@ def test_parse_chapter_body_br_without_paragraphs(selectolax_on, monkeypatch):
 def test_parse_chapter_body_backends_agree(monkeypatch):
     import backend.adapters.fetcher as fetcher
 
+    if not fetcher._SELECTOLAX_AVAILABLE:
+        pytest.skip("selectolax is unavailable")
     monkeypatch.setattr(fetcher, "_SELECTOLAX_AVAILABLE", True)
     on = fetcher.parse_chapter_body(_BR_HTML, ["#c"])
     monkeypatch.setattr(fetcher, "_SELECTOLAX_AVAILABLE", False)
