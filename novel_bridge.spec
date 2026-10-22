@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path.cwd().resolve()
 LNCRAWL_CHECKOUT = PROJECT_ROOT / "lightnovel-crawler-dev"
 LNCRAWL_SOURCES = PROJECT_ROOT / "other sources" / "lightnovel-crawler-sources"
 
