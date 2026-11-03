@@ -125,6 +125,7 @@ jobs:
             throw "LightNovelCrawler runtime is missing from the application bundle"
           }
           $requiredCrawlerFiles = @(
+            "lncrawl\VERSION",
             "lightnovel-crawler-dev\LICENSE",
             "other sources\lightnovel-crawler-sources\LICENSE",
             "other sources\lightnovel-crawler-sources\en",

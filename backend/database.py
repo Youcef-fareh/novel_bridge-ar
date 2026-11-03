@@ -180,6 +180,60 @@ def get_all_novels() -> List[Novel]:
         return list(session.exec(select(Novel)).all())
 
 
+def get_novel_chapter_counts() -> dict[int, dict[str, int]]:
+    with Session(_engine) as session:
+        rows = session.exec(
+            select(Chapter.novel_id, Chapter.status, func.count(Chapter.id)).group_by(
+                Chapter.novel_id, Chapter.status
+            )
+        ).all()
+
+    counts: dict[int, dict[str, int]] = {}
+    for novel_id, status, count in rows:
+        novel_counts = counts.setdefault(
+            novel_id,
+            {
+                "total": 0,
+                "pending": 0,
+                "scraped": 0,
+                "translating": 0,
+                "translated": 0,
+                "failed": 0,
+            },
+        )
+        status_value = status.value if hasattr(status, "value") else str(status)
+        novel_counts["total"] += count
+        if status_value in novel_counts:
+            novel_counts[status_value] += count
+    return counts
+
+
+def get_novel_chapter_summaries(novel_id: int) -> list[dict]:
+    with Session(_engine) as session:
+        rows = session.exec(
+            select(
+                Chapter.id,
+                Chapter.index,
+                Chapter.title,
+                Chapter.status,
+                func.length(Chapter.translated_text) > 0,
+            )
+            .where(Chapter.novel_id == novel_id)
+            .order_by(Chapter.index)
+        ).all()
+
+    return [
+        {
+            "id": chapter_id,
+            "index": chapter_index,
+            "title": title,
+            "status": status.value if hasattr(status, "value") else str(status),
+            "has_translation": bool(has_translation),
+        }
+        for chapter_id, chapter_index, title, status, has_translation in rows
+    ]
+
+
 def get_novels_page(offset: int, limit: int) -> tuple[List[Novel], int]:
     with Session(_engine) as session:
         total = session.exec(select(func.count()).select_from(Novel)).one()

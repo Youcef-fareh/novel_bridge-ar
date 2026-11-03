@@ -1236,6 +1236,203 @@ async def test_translation_pipeline_failure_stops_and_suggests(tmp_path, monkeyp
     assert 80.0 in sleep_calls
 
 
+@pytest.mark.asyncio
+async def test_translation_failure_cancels_other_workers(tmp_path, monkeypatch):
+    import asyncio
+    from backend.models import ChapterStatus
+    from backend.pipeline import run_translation_job
+    from backend.translation import ProviderFailureError
+    import backend.database as db_module
+    import backend.pipeline as pipeline_module
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "pipeline_worker_cleanup.db"))
+    import importlib
+    importlib.reload(db_module)
+    db_module.init_db()
+    novel = db_module.create_novel(
+        title="Worker Cleanup Test",
+        source_url="https://test.example/worker-cleanup",
+        source_site="novelfire",
+    )
+    for index in range(2):
+        chapter = db_module.upsert_chapter(
+            novel.id, index, f"Ch {index + 1}", f"https://test.example/{index + 1}"
+        )
+        db_module.update_chapter(
+            chapter.id, raw_text=f"Source {index}", status=ChapterStatus.scraped
+        )
+
+    class Provider:
+        provider_name = "test"
+
+        async def translate_chapter(self, text, glossary, model=None):
+            if text == "Source 0":
+                await asyncio.sleep(0)
+                raise RuntimeError("provider failed")
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                sibling_cancelled.set()
+                raise
+
+    sibling_cancelled = asyncio.Event()
+    monkeypatch.setattr(pipeline_module, "get_provider", lambda *args, **kwargs: Provider())
+    monkeypatch.setattr(pipeline_module, "_max_concurrent_jobs", lambda: 2)
+
+    with pytest.raises(ProviderFailureError):
+        await run_translation_job(novel.id)
+
+    assert sibling_cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_translation_cancel_prevents_next_provider_request(tmp_path, monkeypatch):
+    import asyncio
+    import importlib
+    import backend.database as db_module
+    import backend.pipeline as pipeline_module
+    from backend.models import ChapterStatus
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "pipeline_cancel_requests.db"))
+    importlib.reload(db_module)
+    db_module.init_db()
+    pipeline_module = importlib.reload(pipeline_module)
+    novel = db_module.create_novel(
+        title="Cancellation Test",
+        source_url="https://test.example/cancel",
+        source_site="novelfire",
+    )
+    for index in range(2):
+        chapter = db_module.upsert_chapter(
+            novel.id, index, f"Ch {index + 1}", f"https://test.example/{index + 1}"
+        )
+        db_module.update_chapter(
+            chapter.id, raw_text=f"Source {index}", status=ChapterStatus.scraped
+        )
+
+    control = pipeline_module.JobControl()
+
+    class Provider:
+        provider_name = "test"
+        calls = []
+
+        async def translate_chapter(self, text, glossary, model=None):
+            self.calls.append(text)
+            control.cancel()
+            return f"Translated {text}"
+
+    provider = Provider()
+    monkeypatch.setattr(pipeline_module, "get_provider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(pipeline_module, "_max_concurrent_jobs", lambda: 1)
+
+    with pytest.raises(asyncio.CancelledError):
+        await pipeline_module.run_translation_job(novel.id, job_control=control)
+
+    assert provider.calls == ["Source 0"]
+
+
+def test_web_bridge_snapshot_uses_chapter_counts_and_loads_chapters_on_demand(
+    tmp_path, monkeypatch
+):
+    import importlib
+    import backend.database as db_module
+    import gui.web_bridge as bridge_module
+    import json
+    from backend.models import ChapterStatus
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "bridge_snapshot.db"))
+    db_module = importlib.reload(db_module)
+    db_module.init_db()
+    novel = db_module.create_novel(
+        title="Snapshot Test",
+        source_url="https://test.example/snapshot",
+        source_site="novelfire",
+    )
+    chapter = db_module.upsert_chapter(
+        novel.id, 0, "Chapter One", "https://test.example/chapter-1"
+    )
+    db_module.update_chapter(
+        chapter.id,
+        raw_text="Source",
+        translated_text="Translation",
+        status=ChapterStatus.translated,
+    )
+
+    monkeypatch.setattr(bridge_module, "get_all_novels", db_module.get_all_novels)
+    monkeypatch.setattr(bridge_module, "get_novel_chapter_counts", db_module.get_novel_chapter_counts)
+    monkeypatch.setattr(
+        bridge_module,
+        "get_novel_chapter_summaries",
+        db_module.get_novel_chapter_summaries,
+    )
+    monkeypatch.setattr(bridge_module, "get_all_glossary_rules", lambda: [])
+    monkeypatch.setattr(bridge_module, "get_preferences", lambda: {})
+    monkeypatch.setattr(
+        bridge_module.NovelBridgeWebChannel, "_provider_data", lambda _self: []
+    )
+
+    channel = bridge_module.NovelBridgeWebChannel()
+    novel_data = next(item for item in channel.snapshot()["novels"] if item["id"] == novel.id)
+    assert novel_data["chapter_counts"]["total"] == 1
+    assert novel_data["chapter_counts"]["translated"] == 1
+    assert "chapters" not in novel_data
+
+    chapter_data = db_module.get_novel_chapter_summaries(novel.id)
+    assert len(chapter_data) == 1
+    assert chapter_data[0]["title"] == "Chapter One"
+    assert "source_url" not in chapter_data[0]
+
+    workers = []
+
+    class CapturingThreadPool:
+        def start(self, worker):
+            workers.append(worker)
+
+    channel._thread_pool = CapturingThreadPool()
+    loaded = []
+    channel.novel_chapters_loaded.connect(lambda novel_id, raw: loaded.append((novel_id, raw)))
+    assert channel.request_novel_chapters(novel.id)
+    assert len(workers) == 1
+    assert loaded == []
+
+    workers[0].run()
+    assert loaded[0][0] == novel.id
+    assert json.loads(loaded[0][1])[0]["title"] == "Chapter One"
+
+
+def test_job_control_cancel_does_not_block_on_database(monkeypatch):
+    import threading
+    import backend.pipeline as pipeline_module
+    from backend.pipeline import JobControl
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocked_persistence(_job_id):
+        started.set()
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(pipeline_module, "_persist_job_cancellation", blocked_persistence)
+    control = JobControl(job_id=1)
+    cancel_finished = threading.Event()
+
+    def cancel():
+        control.cancel()
+        cancel_finished.set()
+
+    cancel_thread = threading.Thread(target=cancel)
+    cancel_thread.start()
+    try:
+        assert started.wait(timeout=1)
+        assert cancel_finished.wait(timeout=1)
+        assert control.is_cancelled
+        assert not release.is_set()
+    finally:
+        release.set()
+        cancel_thread.join(timeout=1)
+
+
+
 # ── Test: OrcaRouter Provider ──────────────────────────────────────────────────
 def test_orcarouter_provider(monkeypatch):
     from backend.translation import OrcaRouterProvider, get_provider

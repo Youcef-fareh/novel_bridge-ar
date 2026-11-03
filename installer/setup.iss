@@ -61,7 +61,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; ── Main application (PyInstaller one-folder output) ──────────────────────
 ; The spec outputs to dist\NovelBridgeAR\
-Source: "..\dist\NovelBridgeAR\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\NovelBridgeAR\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Permissions: users-readexec
 
 [Icons]
 ; Start Menu shortcut

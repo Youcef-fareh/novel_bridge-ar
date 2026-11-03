@@ -812,16 +812,16 @@ function gotoTab(t){$$('.tab-btn').find(b=>b.dataset.tab===t).click()}
 
 /* ================= library catalog ================= */
 function novelStatus(nv){
- const s=nv.chapters.map(c=>c.status);
- if(s.includes('translating'))return'translating';
- if(s.includes('failed'))return'failed';
- if(s.length&&s.every(x=>x==='translated'))return'translated';
- if(s.some(x=>['scraped','translated','failed'].includes(x)))return'scraped';
+ const c=nv.chapterCounts;
+ if(c.translating)return'translating';
+ if(c.failed)return'failed';
+ if(c.total&&c.translated===c.total)return'translated';
+ if(c.scraped||c.translated)return'scraped';
  return'pending';
 }
 function renderSidebar(){
  const q=$('#novelSearch').value.trim().toLowerCase();
- const allCounts=state.novels.reduce((tot,nv)=>tot+nv.chapters.filter(c=>c.status==='translated').length,0);
+ const allCounts=state.novels.reduce((tot,nv)=>tot+nv.chapterCounts.translated,0);
  $('#librarySummary').innerHTML=`<strong>${state.novels.length}</strong> ${state.language==='ar'?'رواية':'novels'} <span aria-hidden="true">·</span> ${allCounts} ${t('chapterProgress')}`;
  const filter=state.libraryFilter;
  const sort=state.librarySort;
@@ -831,13 +831,13 @@ function renderSidebar(){
  });
  if(sort==='title')novels.sort((a,b)=>a.title.localeCompare(b.title));
  else if(sort==='progress')novels.sort((a,b)=>{
-  const progress=nv=>nv.chapters.length?nv.chapters.filter(c=>c.status==='translated').length/nv.chapters.length:0;
+  const progress=nv=>nv.chapterCounts.total?nv.chapterCounts.translated/nv.chapterCounts.total:0;
   return progress(b)-progress(a)||a.title.localeCompare(b.title);
  });
  else novels.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id).localeCompare(String(a.id),undefined,{numeric:true}));
 
  $('#novelCatalog').innerHTML=novels.map(nv=>{
-  const total=nv.chapters.length,translated=nv.chapters.filter(c=>c.status==='translated').length;
+  const total=nv.chapterCounts.total,translated=nv.chapterCounts.translated;
   const status=novelStatus(nv),progress=total?Math.round(translated/total*100):0;
   const statusLabels={pending:t('statusPending'),scraped:t('statusScraped'),translating:t('statusTranslating'),translated:t('statusTranslated'),failed:t('statusFailed')};
   const statusClass={pending:'off',scraped:'ok',translating:'warn',translated:'ok',failed:'err'};
@@ -873,14 +873,18 @@ $('#novelCatalog').addEventListener('keydown',e=>{
 });
 $('#catalogEmpty').addEventListener('click',e=>{if(e.target.closest('#btnEmptyAdd'))$('#btnAddNovel').click()});
 $('#btnLibRefresh').onclick=()=>{
- if(typeof window.refreshLibrary==='function')window.refreshLibrary(()=>toast('Library refreshed','info'));
+ if(typeof window.refreshLibrary==='function')window.refreshLibrary(()=>toast('Library refreshed','info'),true);
  else{renderSidebar();toast('Library refreshed','info')}
 };
 $('#btnBackLibrary').onclick=()=>{state.libraryView='catalog';renderSidebar()};
 function selectNovel(id){
  state.selectedId=id;state.checked.clear();state.libraryView='workspace';
  renderSidebar();renderDetail();
- const nv=current();if(nv)setStatus(`Selected “${nv.title}”.`);
+ const nv=current();
+ if(nv){
+  setStatus(`Selected “${nv.title}”.`);
+  if(!nv.chaptersLoaded)loadNovelChapters(id);
+ }
 }
 async function deleteNovel(nv){
  if(!nv)return;
@@ -901,9 +905,7 @@ function chip(st){
  return`<span class="st ${c}">${ic(i)}${esc(l)}</span>`;
 }
 function counts(nv){
- const c={total:nv.chapters.length,scraped:0,translated:0,failed:0};
- nv.chapters.forEach(x=>{if(x.status==='scraped')c.scraped++;if(x.status==='translated')c.translated++;if(x.status==='failed')c.failed++});
- return c;
+ return nv.chapterCounts;
 }
 function renderDetail(){
  const nv=current(),D=$('#libDetail');
@@ -962,6 +964,69 @@ function renderDetail(){
  </div>`;
  syncModels();renderChapters();refreshControls();
 }
+function loadNovelChapters(id,done,force=false){
+ const nv=state.novels.find(novel=>novel.id===String(id));if(!nv)return;
+ const chapterBridge=window.novelBridge;
+ if(!chapterBridge){
+  nv.chapterLoadError='The backend bridge is not ready.';
+  renderChapters();
+  return;
+ }
+ if(typeof chapterBridge.request_novel_chapters!=='function'){
+  nv.chapterLoadError='Update NovelBridge to load chapter lists.';
+  renderChapters();
+  return;
+ }
+ if(nv.chaptersLoading){
+  if(force)nv.chaptersReloadPending=true;
+  if(typeof done==='function')nv.chapterLoadDone=done;
+  return;
+ }
+ if(nv.chaptersLoaded&&!force)return;
+ nv.chaptersLoading=true;nv.chapterLoadError='';
+ if(typeof done==='function')nv.chapterLoadDone=done;
+ renderChapters();
+ if(!chapterBridge.request_novel_chapters(Number(id))){
+  nv.chaptersLoading=false;nv.chapterLoadError='Unable to start chapter loading.';
+  renderChapters();
+ }
+}
+function finishNovelChapterLoad(id,raw){
+ const nv=state.novels.find(novel=>novel.id===String(id));if(!nv)return;
+ nv.chaptersLoading=false;
+ if(nv.chaptersReloadPending){
+  nv.chaptersReloadPending=false;
+  loadNovelChapters(id,null,true);
+  return;
+ }
+ try{
+  nv.chapters=JSON.parse(raw).map(c=>({
+   dbId:c.id,num:c.index+1,title:c.title,status:c.status,
+   has_translation:c.has_translation
+  }));
+ }catch(error){
+  failNovelChapterLoad(id,String(error));
+  return;
+ }
+ nv.chaptersLoading=false;nv.chaptersLoaded=true;nv.chapterLoadError='';
+ nv.chapterCounts={total:nv.chapters.length,pending:0,scraped:0,translating:0,translated:0,failed:0};
+ nv.chapters.forEach(chapter=>nv.chapterCounts[chapter.status]++);
+ renderSidebar();
+ if(state.selectedId===String(id))renderDetail();
+ const done=nv.chapterLoadDone;nv.chapterLoadDone=null;
+ if(typeof done==='function')done();
+}
+function failNovelChapterLoad(id,message){
+ const nv=state.novels.find(novel=>novel.id===String(id));if(!nv)return;
+ nv.chaptersLoading=false;nv.chapterLoadError=message;
+ if(nv.chaptersReloadPending){
+  nv.chaptersReloadPending=false;
+  loadNovelChapters(id,null,true);
+  return;
+ }
+ if(state.selectedId===String(id))renderChapters();
+ toast(`Could not load chapters: ${message}`,'err');
+}
 function syncModels(){
  const p=state.providers.find(x=>x.name===$('#provSel')?.value)||state.providers[0];
  if(!p)return;
@@ -972,7 +1037,11 @@ function syncModels(){
 }
 function renderChapters(){
  const nv=current();if(!nv)return;
- $('#chapBody').innerHTML=nv.chapters.map(c=>{
+ $('#chapBody').innerHTML=nv.chapterLoadError
+  ?`<tr><td colspan="5" style="text-align:center;color:var(--red);padding:26px">${esc(nv.chapterLoadError)} <button class="btn btn-outline" data-retry-chapters>Retry</button></td></tr>`
+  :!nv.chaptersLoaded
+  ?`<tr><td colspan="5" style="text-align:center;color:var(--faint);padding:26px">Loading chapters…</td></tr>`
+  :nv.chapters.map(c=>{
   const ck=state.checked.has(c.num);
   const tr=c.status==='translated'?`<span class="tr-ar">العربية ✓</span>`:c.status==='translating'?`<span class="tr-wait">translating…</span>`:c.status==='failed'?`<span style="color:var(--red);font-size:11.5px">error — retry later</span>`:`<span class="tr-dim">—</span>`;
   return`<tr class="crow ${ck?'sel':''}" data-num="${c.num}" tabindex="0"><td class="c-cb"><input type="checkbox" data-cb ${ck?'checked':''}></td><td class="c-num">${c.num}</td><td>${esc(c.title)}</td><td>${chip(c.status)}</td><td>${tr}</td></tr>`;
@@ -980,6 +1049,11 @@ function renderChapters(){
  $('#cbAll').checked=nv.chapters.length>0&&nv.chapters.every(c=>state.checked.has(c.num));
  refreshControls();
 }
+$('#libraryWorkspace').addEventListener('click',event=>{
+ if(event.target.closest('[data-retry-chapters]')){
+  const nv=current();if(nv)loadNovelChapters(nv.id);
+ }
+});
 function parseChapterRanges(value){
  const numbers=new Set(),parts=value.split(',').map(part=>part.trim()).filter(Boolean);
  for(const part of parts){
@@ -1011,7 +1085,7 @@ function refreshControls(){
  const c=counts(nv),job=!!state.job;
  const chkTranslatable=nv.chapters.some(x=>state.checked.has(x.num)&&['scraped','failed'].includes(x.status));
  const chkTrans=nv.chapters.some(x=>state.checked.has(x.num)&&x.status==='translated');
- const pend=nv.chapters.filter(x=>x.status==='pending').length;
+ const pend=nv.chapterCounts.pending;
  const el=id=>$('#'+id);
  if(el('selCount'))el('selCount').textContent=`${state.checked.size} selected`;
  el('btnScrape').disabled=job;
@@ -1115,7 +1189,7 @@ $('#btnAddNovel').onclick=()=>{
 $('#btnSchedule').onclick=()=>{
  const order=state.novels.map(n=>n.id);
  const build=()=>state.novels.map(nv=>{
-  const pend=nv.chapters.filter(c=>c.status==='pending').length;
+  const pend=nv.chapterCounts.pending;
   return`<div class="sch-row" draggable="true" data-id="${nv.id}">${ic('grip')}<input type="checkbox" class="sch-cb"><div class="sch-t">${esc(nv.title)}</div><span style="color:var(--faint)">·</span><span class="sch-n">${pend} pending</span>
   <span class="sch-mv"><button class="btn btn-ghost btn-icon" data-mv="-1" title="Move up">${ic('up','ic-sm')}</button><button class="btn btn-ghost btn-icon" data-mv="1" title="Move down">${ic('down','ic-sm')}</button></span></div>`;
  }).join('');
@@ -1562,16 +1636,26 @@ setStatus('Ready - Add a novel URL to get started.');
   }
 
   function hydrate(snapshot) {
-    state.novels = (snapshot.novels || []).map(n => ({
-      id: String(n.id), title: n.title, author: n.author || 'Unknown author',
-      site: n.source_site, url: n.source_url, cover: n.cover_url || '',
-      isNativeArabic: !!n.is_native_arabic,
-      createdAt: n.created_at || '',
-      chapters: (n.chapters || []).map(c => ({
-        dbId: c.id, num: c.index + 1, title: c.title, status: c.status,
-        has_translation: c.has_translation
-      }))
-    }));
+    const previousNovels = new Map(state.novels.map(novel => [novel.id, novel]));
+    state.novels = (snapshot.novels || []).map(n => {
+      const id = String(n.id);
+      const previous = previousNovels.get(id);
+      return {
+        id, title: n.title, author: n.author || 'Unknown author',
+        site: n.source_site, url: n.source_url, cover: n.cover_url || '',
+        isNativeArabic: !!n.is_native_arabic,
+        createdAt: n.created_at || '',
+        chapterCounts: n.chapter_counts || {
+          total: 0, pending: 0, scraped: 0, translating: 0, translated: 0, failed: 0
+        },
+        chapters: previous?.chapters || [],
+        chaptersLoaded: previous?.chaptersLoaded || false,
+        chaptersLoading: previous?.chaptersLoading || false,
+        chaptersReloadPending: previous?.chaptersReloadPending || false,
+        chapterLoadError: previous?.chapterLoadError || '',
+        chapterLoadDone: previous?.chapterLoadDone || null
+      };
+    });
     state.glossary = (snapshot.glossary || []).map(r => ({
       id: r.id, en: r.source_term, ar: r.target_term, notes: r.notes || ''
     }));
@@ -1596,11 +1680,13 @@ setStatus('Ready - Add a novel URL to get started.');
     renderSidebar(); renderDetail(); renderGlossary(); renderProviders(); renderAdapters(); renderSettings();
   }
 
-  function refresh(done) {
+  function refresh(done, reloadSelected = false) {
     if (!bridge) return;
     bridge.get_snapshot(function (raw) {
       hydrate(JSON.parse(raw));
-      if (typeof done === 'function') done();
+      const selected = current();
+      if (reloadSelected && selected) loadNovelChapters(selected.id, done, true);
+      else if (typeof done === 'function') done();
     });
   }
   window.refreshLibrary = refresh;
@@ -1611,7 +1697,12 @@ setStatus('Ready - Add a novel URL to get started.');
   }
   function model() { return $('#modelInp')?.value || ''; }
   function finishMessage(kind) {
-    refresh();
+    refresh(null, true);
+    if (kind === 'cancelled') {
+      setStatus('Job stopped.');
+      toast('Job stopped. Completed work is saved.', 'info');
+      return;
+    }
     setStatus(kind === 'scrape' ? 'Scraping complete.' : kind === 'epub' ? 'EPUB exported successfully.' : 'Translation complete.');
     toast(kind === 'epub' ? 'EPUB build completed.' : 'Backend job completed.');
   }
@@ -1660,7 +1751,7 @@ setStatus('Ready - Add a novel URL to get started.');
   window.delTranslations = function () {
     const nv = current(); if (!nv) return;
     const ids = nv.chapters.filter(c => state.checked.has(c.num)).map(c => c.dbId);
-    if (ids.length) bridge.delete_translations(Number(nv.id), JSON.stringify(ids), function (changed) { if (changed) refresh(); });
+    if (ids.length) bridge.delete_translations(Number(nv.id), JSON.stringify(ids), function (changed) { if (changed) refresh(null, true); });
   };
   window.togglePause = function () {
     const paused = $('#btnPause')?.textContent.includes('Continue');
@@ -1919,7 +2010,11 @@ setStatus('Ready - Add a novel URL to get started.');
         if (!/^https?:\/\//i.test(url)) { error.hidden = false; error.textContent = 'Enter a valid URL starting with http:// or https://.'; return; }
         bridge.add_novel(url, function (raw) {
           const result = JSON.parse(raw);
-          if (result.ok) { closeModal(); refresh(); setStatus('Novel added.'); }
+          if (result.ok) {
+            closeModal();
+            refresh(function () { selectNovel(String(result.id)); });
+            setStatus('Novel added.');
+          }
           else { error.hidden = false; error.textContent = result.error; }
         });
       };
@@ -1959,7 +2054,7 @@ setStatus('Ready - Add a novel URL to get started.');
       showJob(); setJob(total ? done / total * 100 : 0, message);
     });
     bridge.job_finished.connect(function (kind) { hideJob(); finishMessage(kind); });
-    bridge.job_error.connect(function (message) { hideJob(); refresh(); infoBox('Operation failed', esc(message), 'alert', 'red'); });
+    bridge.job_error.connect(function (message) { hideJob(); refresh(null, true); infoBox('Operation failed', esc(message), 'alert', 'red'); });
     bridge.provider_test_finished.connect(function (raw) {
       const handler = pendingProviderTest;
       pendingProviderTest = null;
@@ -1999,6 +2094,8 @@ setStatus('Ready - Add a novel URL to get started.');
       if (start) start.disabled = false;
       activeSourceSearchId = null;
     });
+    bridge.novel_chapters_loaded.connect(finishNovelChapterLoad);
+    bridge.novel_chapters_error.connect(failNovelChapterLoad);
     bridge.state_changed.connect(refresh);
     window.novelBridge = bridge;
     wireBackendButtons();

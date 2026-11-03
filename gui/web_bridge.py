@@ -35,7 +35,8 @@ from backend.database import (
     delete_novel,
     get_all_glossary_rules,
     get_all_novels,
-    get_chapters,
+    get_novel_chapter_counts,
+    get_novel_chapter_summaries,
     get_pending_translation_chapters,
     get_novel,
 )
@@ -106,6 +107,29 @@ class _AsyncWorker(QRunnable):
             loop.close()
 
 
+class _ChapterLoadSignals(QObject):
+    finished = pyqtSignal(int, str)
+    error = pyqtSignal(int, str)
+
+
+class _ChapterLoadWorker(QRunnable):
+    def __init__(self, novel_id: int):
+        super().__init__()
+        self.novel_id = novel_id
+        self.signals = _ChapterLoadSignals()
+
+    @pyqtSlot()
+    def run(self):
+        try:
+            chapters = get_novel_chapter_summaries(self.novel_id)
+            result = json.dumps(chapters, ensure_ascii=False)
+        except Exception as exc:
+            logger.exception("Could not load chapters for novel %s", self.novel_id)
+            self.signals.error.emit(self.novel_id, str(exc))
+        else:
+            self.signals.finished.emit(self.novel_id, result)
+
+
 class NovelBridgeWebChannel(QObject):
     """Expose backend-backed operations to the embedded HTML frontend."""
 
@@ -118,6 +142,8 @@ class NovelBridgeWebChannel(QObject):
     source_search_results = pyqtSignal(str, str)
     source_search_finished = pyqtSignal(str, str)
     source_search_error = pyqtSignal(str, str)
+    novel_chapters_loaded = pyqtSignal(int, str)
+    novel_chapters_error = pyqtSignal(int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -127,8 +153,7 @@ class NovelBridgeWebChannel(QObject):
         self._source_searches_lock = threading.Lock()
 
     @staticmethod
-    def _novel_data(novel) -> dict:
-        chapters = get_chapters(novel.id)
+    def _novel_data(novel, chapter_counts: Optional[dict[str, int]] = None) -> dict:
         adapter = AdapterRegistry._adapters.get(novel.source_site)
         return {
             "id": novel.id,
@@ -143,17 +168,15 @@ class NovelBridgeWebChannel(QObject):
             "description": novel.description or "",
             "status": novel.status.value if hasattr(novel.status, "value") else str(novel.status),
             "created_at": novel.created_at.isoformat(),
-            "chapters": [
-                {
-                    "id": chapter.id,
-                    "index": chapter.index,
-                    "title": chapter.title,
-                    "source_url": chapter.source_url,
-                    "status": chapter.status.value if hasattr(chapter.status, "value") else str(chapter.status),
-                    "has_translation": bool(chapter.translated_text),
-                }
-                for chapter in chapters
-            ],
+            "chapter_counts": chapter_counts
+            or {
+                "total": 0,
+                "pending": 0,
+                "scraped": 0,
+                "translating": 0,
+                "translated": 0,
+                "failed": 0,
+            },
         }
 
     @staticmethod
@@ -191,8 +214,12 @@ class NovelBridgeWebChannel(QObject):
 
     def snapshot(self) -> dict:
         preferences = get_preferences()
+        chapter_counts = get_novel_chapter_counts()
         return {
-            "novels": [self._novel_data(novel) for novel in get_all_novels()],
+            "novels": [
+                self._novel_data(novel, chapter_counts.get(novel.id))
+                for novel in get_all_novels()
+            ],
             "glossary": [
                 {"id": rule.id, "source_term": rule.source_term, "target_term": rule.target_term, "notes": rule.notes or ""}
                 for rule in get_all_glossary_rules()
@@ -218,6 +245,18 @@ class NovelBridgeWebChannel(QObject):
     @pyqtSlot(result=str)
     def get_snapshot(self) -> str:
         return json.dumps(self.snapshot(), ensure_ascii=False)
+
+    @pyqtSlot(int, result=bool)
+    def request_novel_chapters(self, novel_id: int) -> bool:
+        worker = _ChapterLoadWorker(novel_id)
+        worker.signals.finished.connect(self.novel_chapters_loaded)
+        worker.signals.error.connect(self.novel_chapters_error)
+        try:
+            self._thread_pool.start(worker)
+        except RuntimeError:
+            logger.exception("Could not start chapter loader for novel %s", novel_id)
+            return False
+        return True
 
     @pyqtSlot(str, str, str, str, str, int, result=bool)
     def search_sources(
@@ -342,7 +381,6 @@ class NovelBridgeWebChannel(QObject):
             return json.dumps({"ok": False, "error": "No adapter recognizes this URL."})
         from backend.database import create_novel
         novel = create_novel(url.strip(), adapter.site_id)
-        self.state_changed.emit("novels")
         return json.dumps({"ok": True, "id": novel.id})
 
     @pyqtSlot(result=str)
@@ -364,7 +402,6 @@ class NovelBridgeWebChannel(QObject):
             logger.exception("Failed to import EPUB: %s", file_path)
             return json.dumps({"ok": False, "error": str(exc)})
 
-        self.state_changed.emit("novels")
         from backend.database import get_chapters
 
         chapter_count = len(get_chapters(novel.id))
@@ -381,8 +418,6 @@ class NovelBridgeWebChannel(QObject):
     @pyqtSlot(int, result=bool)
     def remove_novel(self, novel_id: int) -> bool:
         result = delete_novel(novel_id)
-        if result:
-            self.state_changed.emit("novels")
         return result
 
     @pyqtSlot(str, str, str, result=str)
@@ -452,8 +487,6 @@ class NovelBridgeWebChannel(QObject):
                 from backend.database import update_chapter
                 update_chapter(chapter.id, translated_text=None, status=status)
                 changed = True
-        if changed:
-            self.state_changed.emit("novels")
         return changed
 
     @pyqtSlot(int, result=bool)
@@ -579,12 +612,10 @@ class NovelBridgeWebChannel(QObject):
     def _job_done(self, kind: str, result=None) -> None:
         self._job_control = None
         self.job_finished.emit(kind)
-        self.state_changed.emit("novels")
 
     def _job_failed(self, message: str) -> None:
         self._job_control = None
         self.job_error.emit(message)
-        self.state_changed.emit("novels")
 
     @pyqtSlot(result=bool)
     def cancel_job(self) -> bool:

@@ -411,7 +411,7 @@ def test_web_bridge_exposes_native_arabic_adapter_and_novel_language(monkeypatch
     AdapterRegistry.register(adapter)
     monkeypatch.setattr(web_bridge, "get_all_novels", lambda: [])
     monkeypatch.setattr(web_bridge, "get_all_glossary_rules", lambda: [])
-    monkeypatch.setattr(web_bridge, "get_chapters", lambda _novel_id: [])
+    monkeypatch.setattr(web_bridge, "get_novel_chapter_counts", lambda: {})
     novel = SimpleNamespace(
         id=1,
         title="Arabic Novel",

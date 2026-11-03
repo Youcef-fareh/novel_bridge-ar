@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+from concurrent.futures import ThreadPoolExecutor
 import inspect
 import logging
+import threading
 import weakref
 import httpx
 from pathlib import Path
@@ -34,6 +36,19 @@ from backend.translation import (
 )
 
 logger = logging.getLogger("novelbridge.pipeline")
+_job_control_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="job-control",
+)
+
+
+def _persist_job_cancellation(job_id: int) -> None:
+    try:
+        from backend.database import cancel_job
+
+        cancel_job(job_id)
+    except Exception:
+        logger.exception("Could not persist cancellation for job %s", job_id)
 
 
 class EmptyChapterError(ValueError):
@@ -119,15 +134,13 @@ class JobControl:
     """
     def __init__(self, job_id: Optional[int] = None):
         self._paused = False
-        self._cancelled = False
+        self._cancel_event = threading.Event()
         self._job_id = job_id
 
     def bind_job(self, job_id: int) -> None:
         self._job_id = job_id
-        if self._cancelled:
-            from backend.database import cancel_job
-
-            cancel_job(job_id)
+        if self.is_cancelled:
+            _job_control_executor.submit(_persist_job_cancellation, job_id)
         elif self._paused:
             update_job(job_id, status=JobStatus.paused)
 
@@ -149,12 +162,12 @@ class JobControl:
                 )
 
     def cancel(self) -> None:
-        self._cancelled = True
+        if self.is_cancelled:
+            return
+        self._cancel_event.set()
         self._paused = False
         if self._job_id is not None:
-            from backend.database import cancel_job
-
-            cancel_job(self._job_id)
+            _job_control_executor.submit(_persist_job_cancellation, self._job_id)
 
     @property
     def is_paused(self) -> bool:
@@ -162,7 +175,7 @@ class JobControl:
 
     @property
     def is_cancelled(self) -> bool:
-        return self._cancelled
+        return self._cancel_event.is_set()
 
     async def check(self, on_paused: Optional[Callable[[], None]] = None) -> None:
         """
@@ -170,15 +183,24 @@ class JobControl:
         If cancelled, raises asyncio.CancelledError.
         If paused, waits until resume() or cancel() is called.
         """
-        if self._cancelled:
+        if self.is_cancelled:
             raise asyncio.CancelledError("Job was cancelled by the user.")
         if self._paused:
             if on_paused:
                 on_paused()
-            while self._paused and not self._cancelled:
+            while self._paused and not self.is_cancelled:
                 await asyncio.sleep(0.25)
-            if self._cancelled:
+            if self.is_cancelled:
                 raise asyncio.CancelledError("Job was cancelled by the user.")
+
+    async def wait(self, seconds: float) -> None:
+        deadline = asyncio.get_running_loop().time() + max(0.0, seconds)
+        while True:
+            await self.check()
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return
+            await asyncio.sleep(min(0.25, remaining))
 
 
 # ── Scrape pipeline ────────────────────────────────────────────────────────────
@@ -605,10 +627,16 @@ async def run_translation_job(
     async def wait_for_request_slot() -> None:
         nonlocal last_request_started_at
         async with request_start_lock:
+            if job_control:
+                await job_control.check()
             loop_time = asyncio.get_running_loop().time()
             elapsed = loop_time - last_request_started_at
             if elapsed < request_cooldown_seconds:
-                await asyncio.sleep(request_cooldown_seconds - elapsed)
+                delay = request_cooldown_seconds - elapsed
+                if job_control:
+                    await job_control.wait(delay)
+                else:
+                    await asyncio.sleep(delay)
             last_request_started_at = asyncio.get_running_loop().time()
 
     async def translate_one(chapter: Chapter) -> None:
@@ -656,6 +684,8 @@ async def run_translation_job(
                     )
                     context = (previous or "")[-500:]
                     await wait_for_request_slot()
+                    if job_control:
+                        await job_control.check()
                     update_chapter(chapter.id, status=ChapterStatus.translating)
                     translate_options = {"model": model_name}
                     if "context" in inspect.signature(provider.translate_chapter).parameters:
@@ -679,6 +709,8 @@ async def run_translation_job(
                     update_chapter(chapter.id, status=ChapterStatus.scraped)
                     raise
                 except Exception as e:
+                    if job_control:
+                        await job_control.check()
                     last_error_msg = str(e)
                     logger.warning(
                         f"Failed to translate chapter {chapter.index} with {provider.provider_name} "
@@ -694,7 +726,10 @@ async def run_translation_job(
                                 f"Provider error on chapter {chapter.index}. Retrying in "
                                 f"{int(provider_error_wait_seconds)} seconds…",
                             )
-                        await asyncio.sleep(provider_error_wait_seconds)
+                        if job_control:
+                            await job_control.wait(provider_error_wait_seconds)
+                        else:
+                            await asyncio.sleep(provider_error_wait_seconds)
                         continue
 
                     if attempt == 1:
@@ -740,7 +775,14 @@ async def run_translation_job(
 
         num_workers = min(_max_concurrent_jobs(), total)
         worker_tasks = [asyncio.create_task(worker()) for _ in range(num_workers)]
-        await asyncio.gather(*worker_tasks)
+        try:
+            await asyncio.gather(*worker_tasks)
+        except BaseException:
+            for task in worker_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*worker_tasks, return_exceptions=True)
+            raise
 
         if stop_event.is_set():
             suggestion = (
