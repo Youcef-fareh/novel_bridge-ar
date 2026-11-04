@@ -129,14 +129,24 @@ def main() -> int:
     args = parser.parse_args()
 
     create_portable_archive(args.source, args.portable_output)
-    if args.previous_dir and args.previous_dir.is_dir():
+    if args.previous_dir is None:
+        print("No prior portable release is available; this release will use the full installer.")
+    elif not args.previous_dir.is_dir():
+        print(
+            f"Previous portable release directory is unavailable: {args.previous_dir}. "
+            "This release will use the full installer."
+        )
+    elif not (args.previous_dir / "VERSION").is_file():
+        print(
+            f"Previous portable release is missing VERSION: {args.previous_dir}. "
+            "Skipping incremental update; this release will use the full installer."
+        )
+    else:
         script = create_update_package(args.previous_dir, args.source, args.update_build_dir)
         if script:
             print(f"Prepared incremental update script: {script}")
         else:
             print("No changed application files; no incremental update is needed.")
-    else:
-        print("No prior portable release is available; this release will use the full installer.")
     return 0
 
 

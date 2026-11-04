@@ -101,6 +101,40 @@ def test_update_package_contains_only_changed_app_files(tmp_path):
     assert "[Languages]" in contents
 
 
+def test_missing_previous_version_falls_back_to_full_installer(tmp_path, monkeypatch, capsys):
+    from scripts import create_update_package
+
+    source = tmp_path / "source"
+    previous = tmp_path / "previous" / "NovelBridgeAR"
+    source.mkdir()
+    previous.mkdir(parents=True)
+    (source / "VERSION").write_text("1.1.0", encoding="utf-8")
+    (source / "NovelBridgeAR.exe").write_text("current exe", encoding="utf-8")
+    portable_output = tmp_path / "output" / "portable.zip"
+    update_build = tmp_path / "update-build"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "create_update_package.py",
+            "--source",
+            str(source),
+            "--portable-output",
+            str(portable_output),
+            "--previous-dir",
+            str(previous),
+            "--update-build-dir",
+            str(update_build),
+        ],
+    )
+
+    assert create_update_package.main() == 0
+
+    assert portable_output.is_file()
+    assert not update_build.exists()
+    assert "missing VERSION" in capsys.readouterr().out
+
+
 def test_download_update_checks_sha256_before_returning_file(tmp_path, monkeypatch):
     import hashlib
 
