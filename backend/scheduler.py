@@ -120,6 +120,8 @@ class JobScheduler:
         finally:
             maintenance.cancel()
             await asyncio.gather(maintenance, return_exceptions=True)
+            for worker in workers:
+                worker.cancel()
             await asyncio.gather(*workers, return_exceptions=True)
 
     async def _maintenance_loop(self) -> None:
@@ -147,12 +149,30 @@ class JobScheduler:
     async def _worker_loop(self, worker_number: int) -> None:
         worker_id = f"{os.getpid()}:{self._instance_id}:{worker_number}"
         while not self._stop_requested.is_set():
-            try:
-                job = await asyncio.to_thread(
+            claim = asyncio.create_task(
+                asyncio.to_thread(
                     claim_next_job,
                     worker_id,
                     self.max_per_domain,
                 )
+            )
+            try:
+                job = await asyncio.shield(claim)
+            except asyncio.CancelledError:
+                try:
+                    job = await claim
+                    if job is not None:
+                        await asyncio.to_thread(
+                            requeue_job,
+                            job.id,
+                            "Requeued after scheduler shutdown",
+                        )
+                except Exception:
+                    logger.exception(
+                        "Worker %s failed to release a job during shutdown",
+                        worker_id,
+                    )
+                raise
             except Exception:
                 logger.exception("Worker %s failed to claim a queued job", worker_id)
                 await asyncio.sleep(self.poll_interval)

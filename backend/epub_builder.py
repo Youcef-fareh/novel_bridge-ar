@@ -302,8 +302,9 @@ def build_epub(
 
     # ── Write file ────────────────────────────────────────────────────────────
     safe_title = "".join(c for c in novel.title if c.isalnum() or c in " _-").rstrip()
+    novel_suffix = f"_{novel.id}" if novel.id is not None else ""
     volume_suffix = f".Vol_{volume:03d}" if volume is not None else ""
     language_suffix = f".{language}" if language else ""
-    artifact_path = out_dir / f"{safe_title or f'novel_{novel.id}'}{volume_suffix}{language_suffix}.epub"
+    artifact_path = out_dir / f"{safe_title or 'novel'}{novel_suffix}{volume_suffix}{language_suffix}.epub"
     epub.write_epub(str(artifact_path), book)
     return artifact_path

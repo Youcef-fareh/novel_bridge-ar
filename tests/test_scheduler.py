@@ -196,7 +196,10 @@ def test_scheduler_schema_migrates_legacy_job_table(tmp_path, monkeypatch):
 
 def test_pause_resume_and_cancel_persist_to_job(tmp_path, monkeypatch):
     database = _fresh_database(tmp_path, monkeypatch)
+    from threading import Event
+
     from backend.models import JobStatus, JobType
+    import backend.pipeline as pipeline_module
     from backend.pipeline import JobControl
 
     novel = database.create_novel("https://example.org/book", "example")
@@ -208,7 +211,16 @@ def test_pause_resume_and_cancel_persist_to_job(tmp_path, monkeypatch):
 
     control.resume()
     assert database.get_job(job.id).status == JobStatus.queued
+    persisted = Event()
+    persist_cancellation = pipeline_module._persist_job_cancellation
+
+    def persist_and_signal(job_id):
+        persist_cancellation(job_id)
+        persisted.set()
+
+    monkeypatch.setattr(pipeline_module, "_persist_job_cancellation", persist_and_signal)
     control.cancel()
+    assert persisted.wait(timeout=2)
     assert database.get_job(job.id).status == JobStatus.cancelled
     assert database.get_job(job.id).finished_at is not None
 
@@ -274,3 +286,40 @@ def test_scheduler_worker_executes_persisted_job(tmp_path, monkeypatch):
     assert completed.status == JobStatus.completed
     assert completed.progress == 100
     assert completed.current_message == "Scraped"
+
+
+def test_scheduler_shutdown_cancels_and_requeues_active_job(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+
+    database = _fresh_database(tmp_path, monkeypatch)
+    from backend.models import JobStatus, JobType
+
+    scheduler_module = importlib.reload(importlib.import_module("backend.scheduler"))
+    scheduler = scheduler_module.JobScheduler()
+    monkeypatch.setattr(scheduler, "worker_count", 1)
+    monkeypatch.setattr(scheduler, "poll_interval", 0.01)
+    novel = database.create_novel("https://example.org/book", "example")
+    entered = threading.Event()
+
+    async def blocked_scrape(
+        novel_id, progress_cb=None, job_control=None, job_id=None
+    ):
+        entered.set()
+        await asyncio.Event().wait()
+
+    import backend.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "run_scrape_job", blocked_scrape)
+    job = database.enqueue_job(novel.id, JobType.scrape)
+    scheduler.start()
+    try:
+        assert entered.wait(timeout=3)
+        scheduler.stop(timeout=3)
+    finally:
+        scheduler.stop(timeout=3)
+
+    stopped_job = database.get_job(job.id)
+    assert not scheduler.is_running
+    assert stopped_job.status == JobStatus.queued
+    assert stopped_job.worker_id is None

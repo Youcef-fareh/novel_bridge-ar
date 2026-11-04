@@ -687,6 +687,31 @@ def test_epub_builder(tmp_path):
     assert output.stat().st_size > 100
 
 
+def test_epub_builder_uses_unique_filename_for_duplicate_titles(tmp_path):
+    from backend.models import Novel
+    from backend.epub_builder import build_epub
+
+    first = Novel(
+        id=1,
+        title="Shared Title",
+        source_url="https://one.example/book",
+        source_site="one",
+    )
+    second = Novel(
+        id=2,
+        title="Shared Title",
+        source_url="https://two.example/book",
+        source_site="two",
+    )
+
+    first_path = build_epub(first, [], output_dir=tmp_path)
+    second_path = build_epub(second, [], output_dir=tmp_path)
+
+    assert first_path != second_path
+    assert first_path.is_file()
+    assert second_path.is_file()
+
+
 def test_epub_builder_escapes_plain_text(tmp_path):
     from xml.etree import ElementTree
     from zipfile import ZipFile
