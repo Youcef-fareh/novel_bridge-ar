@@ -35,6 +35,7 @@ from backend.database import (
     delete_novel,
     get_all_glossary_rules,
     get_all_novels,
+    get_chapters,
     get_novel_chapter_counts,
     get_novel_chapter_summaries,
     get_pending_translation_chapters,
@@ -401,8 +402,6 @@ class NovelBridgeWebChannel(QObject):
         except Exception as exc:
             logger.exception("Failed to import EPUB: %s", file_path)
             return json.dumps({"ok": False, "error": str(exc)})
-
-        from backend.database import get_chapters
 
         chapter_count = len(get_chapters(novel.id))
         return json.dumps(
